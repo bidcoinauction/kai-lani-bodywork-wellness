@@ -5,7 +5,7 @@ export default function Hero() {
         <p className="eyebrow hero-kicker">Downtown Mount Holly</p>
         <h1>Kai Lani Bodywork & Wellness</h1>
         <p className="hero-copy">
-          Therapeutic massage and restorative bodywork by Chelsea Askew, NC LMBT license no. 19862.
+          Therapeutic massage and restorative bodywork by Chelsea Teller, NC LMBT license no. 19862.
         </p>
         <div className="hero-actions">
           <a className="button primary" href="#booking">Book a session</a>

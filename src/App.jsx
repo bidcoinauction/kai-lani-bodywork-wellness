@@ -6,6 +6,7 @@ import Footer from "./components/Footer.jsx";
 import Header from "./components/Header.jsx";
 import Hero from "./components/Hero.jsx";
 import Intro from "./components/Intro.jsx";
+import Reviews from "./components/Reviews.jsx";
 import Services from "./components/Services.jsx";
 import Visit from "./components/Visit.jsx";
 
@@ -36,12 +37,14 @@ export default function App() {
 
   return (
     <>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <Header />
-      <main id="top">
+      <main id="main-content" tabIndex={-1}>
         <Hero />
         <Intro />
         <Services />
         <Experience />
+        <Reviews />
         <Booking />
         <Credentials />
         <Visit />

@@ -13,7 +13,7 @@ export default function Header() {
 
   return (
     <header className="site-header" data-header>
-      <a className="brand-mark" href="#top" aria-label="Kai Lani home" onClick={closeNav}>
+      <a className="brand-mark" href="#main-content" aria-label="Kai Lani home" onClick={closeNav}>
         <img src={logoSrc} alt="" />
         <span>Kai Lani</span>
       </a>
@@ -30,6 +30,7 @@ export default function Header() {
       <nav className="site-nav" data-nav>
         <a href="#services" onClick={closeNav}>Services</a>
         <a href="#experience" onClick={closeNav}>Experience</a>
+        <a href="#reviews" onClick={closeNav}>Reviews</a>
         <a href="#booking" onClick={closeNav}>Book</a>
         <a href="#visit" onClick={closeNav}>Visit</a>
       </nav>
