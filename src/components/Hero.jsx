@@ -12,11 +12,6 @@ export default function Hero() {
           <a className="button secondary" href="tel:+19802242462">(980) 224-2462</a>
         </div>
       </div>
-      <div className="hero-panel" aria-label="Appointment preview">
-        <span className="panel-kicker">Now booking</span>
-        <strong>Soft opening appointments begin May 1</strong>
-        <p>Choose a service, preferred day, and time. The calendar connection can be added when the live booking link is ready.</p>
-      </div>
     </section>
   );
 }
