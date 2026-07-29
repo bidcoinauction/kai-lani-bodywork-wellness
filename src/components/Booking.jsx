@@ -97,27 +97,27 @@ export default function Booking() {
               </div>
               <p className="addons-label">Enhance your session</p>
               <div className="booking-addon-grid">
-                {addOns.map((addOn) => (
-                  <button
-                    className={`booking-addon-card${selectedAddOns.includes(addOn.id) ? " selected" : ""}`}
-                    key={addOn.id}
-                    type="button"
-                    onClick={() => toggleAddOn(addOn.id)}
-                  >
-                    <div className="booking-addon-info">
-                      <span className="booking-addon-name">{addOn.name}</span>
-                      {addOn.duration && (
-                        <span className="booking-addon-duration">· {addOn.duration}</span>
-                      )}
-                    </div>
-                    <div className="booking-addon-right">
-                      <span className="booking-addon-price">{addOn.price}</span>
-                      {selectedAddOns.includes(addOn.id) && (
-                        <span className="booking-addon-check" aria-hidden="true">✓</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                {addOns.map((addOn) => {
+                  const isAdded = selectedAddOns.includes(addOn.id);
+                  return (
+                    <button
+                      className={`booking-addon-card${isAdded ? " selected" : ""}`}
+                      key={addOn.id}
+                      type="button"
+                      onClick={() => toggleAddOn(addOn.id)}
+                    >
+                      <div className="booking-addon-info">
+                        <span className="booking-addon-name">{addOn.name}</span>
+                        {addOn.duration && (
+                          <span className="booking-addon-duration">· {addOn.duration}</span>
+                        )}
+                      </div>
+                      <span className={`booking-addon-status${isAdded ? " added" : ""}`}>
+                        {isAdded ? "✓ Added" : "+ Add"}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               <button
                 className="button primary next-button"
