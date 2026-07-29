@@ -87,9 +87,10 @@ export default function Booking() {
                       <strong>{service.duration}</strong>
                     </div>
                     <h3>{service.name}</h3>
-                    <span className="booking-service-price">{service.price}</span>
                     {selectedService?.id === service.id && (
-                      <span className="booking-service-check" aria-hidden="true">✓</span>
+                      <div className="booking-service-bottom">
+                        <span className="selected-label">Selected</span>
+                      </div>
                     )}
                   </button>
                 ))}
@@ -161,7 +162,32 @@ export default function Booking() {
 
           {step === 3 && (
             <fieldset className="booking-step active">
-              <legend>Your details</legend>
+              <legend>Confirm and book</legend>
+              <div className="selection-review">
+                <div className="selection-review-row">
+                  <div className="selection-review-info">
+                    <strong>{selectedService.name}</strong>
+                    <span>{selectedService.duration}</span>
+                  </div>
+                  <span className="selection-review-price">{selectedService.price}</span>
+                </div>
+                {selectedAddOns.map((id) => {
+                  const addOn = addOns.find((a) => a.id === id);
+                  return (
+                    <div className="selection-review-row" key={id}>
+                      <div className="selection-review-info">
+                        <span>{addOn.name}</span>
+                        {addOn.duration && <span className="review-addon-duration">{addOn.duration}</span>}
+                      </div>
+                      <span className="selection-review-price">{addOn.price}</span>
+                    </div>
+                  );
+                })}
+                <div className="selection-review-total">
+                  <span>Total</span>
+                  <span>{totalPrice}</span>
+                </div>
+              </div>
               <div className="form-grid">
                 <label>
                   <span>Name</span>
