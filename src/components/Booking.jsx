@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { addOns, bookingDates, bookingTimes, services } from "../data.js";
+import { addOns, bookingTimes, services } from "../data.js";
 
 export default function Booking() {
   const [step, setStep] = useState(1);
-  const [selectedService, setSelectedService] = useState(services[0]);
-  const [selectedDate, setSelectedDate] = useState(bookingDates[0].date);
-  const [selectedTime, setSelectedTime] = useState(bookingTimes[0]);
+  const [selectedService, setSelectedService] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
@@ -19,6 +18,7 @@ export default function Booking() {
   }
 
   const totalPrice = useMemo(() => {
+    if (!selectedService) return "$0";
     const base = parseInt(selectedService.price.replace("$", ""));
     const extras = selectedAddOns.reduce((sum, id) => {
       const addOn = addOns.find((a) => a.id === id);
@@ -29,7 +29,9 @@ export default function Booking() {
 
   const summaryNote = useMemo(() => {
     if (!isSubmitted) return "No payment is collected today.";
-    const addOnText = selectedAddOns.length > 0 ? ` with ${selectedAddOns.map((id) => addOns.find((a) => a.id === id).name.toLowerCase()).join(" & ")}` : "";
+    const addOnText = selectedAddOns.length > 0
+      ? ` with ${selectedAddOns.map((id) => addOns.find((a) => a.id === id).name.toLowerCase()).join(" & ")}`
+      : "";
     return name.trim()
       ? `Thanks, ${name.trim()}${addOnText}. Your request is ready for Chelsea to confirm.`
       : `Your request${addOnText} is ready for Chelsea to confirm.`;
@@ -72,37 +74,56 @@ export default function Booking() {
           {step === 1 && (
             <fieldset className="booking-step active">
               <legend>Choose your session</legend>
-              {services.map((service) => (
-                <label className="choice-card" key={service.id}>
-                  <input
-                    type="radio"
-                    name="service"
-                    checked={selectedService.id === service.id}
-                    onChange={() => setSelectedService(service)}
-                  />
-                  <span>
-                    <strong>{service.name}</strong>
-                    <small>{service.duration} · {service.price}</small>
-                  </span>
-                  {selectedService.id === service.id && <em>Selected</em>}
-                </label>
-              ))}
-              <p style={{ margin: "24px 0 12px", fontWeight: 800 }}>Add-ons</p>
-              {addOns.map((addOn) => (
-                <label className="choice-card" key={addOn.id}>
-                  <input
-                    type="checkbox"
-                    checked={selectedAddOns.includes(addOn.id)}
-                    onChange={() => toggleAddOn(addOn.id)}
-                  />
-                  <span>
-                    <strong>{addOn.name}</strong>
-                    <small>{addOn.duration ? `${addOn.duration} · ` : ""}{addOn.price} — {addOn.description}</small>
-                  </span>
-                  {selectedAddOns.includes(addOn.id) && <em>Added</em>}
-                </label>
-              ))}
-              <button className="button primary next-button" type="button" onClick={() => moveTo(2)}>
+              <div className="booking-service-grid">
+                {services.map((service) => (
+                  <button
+                    className={`booking-service-card${selectedService?.id === service.id ? " selected" : ""}`}
+                    key={service.id}
+                    type="button"
+                    onClick={() => setSelectedService(service)}
+                  >
+                    <div className="booking-service-topline">
+                      <span>{service.number}</span>
+                      <strong>{service.duration}</strong>
+                    </div>
+                    <h3>{service.name}</h3>
+                    <span className="booking-service-price">{service.price}</span>
+                    {selectedService?.id === service.id && (
+                      <span className="booking-service-check" aria-hidden="true">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="addons-label">Enhance your session</p>
+              <div className="booking-addon-grid">
+                {addOns.map((addOn) => (
+                  <button
+                    className={`booking-addon-card${selectedAddOns.includes(addOn.id) ? " selected" : ""}`}
+                    key={addOn.id}
+                    type="button"
+                    onClick={() => toggleAddOn(addOn.id)}
+                  >
+                    <div className="booking-addon-info">
+                      <span className="booking-addon-name">{addOn.name}</span>
+                      {addOn.duration && (
+                        <span className="booking-addon-duration">· {addOn.duration}</span>
+                      )}
+                    </div>
+                    <div className="booking-addon-right">
+                      <span className="booking-addon-price">{addOn.price}</span>
+                      {selectedAddOns.includes(addOn.id) && (
+                        <span className="booking-addon-check" aria-hidden="true">✓</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                className="button primary next-button"
+                type="button"
+                onClick={() => moveTo(2)}
+                disabled={!selectedService}
+              >
                 Continue
               </button>
             </fieldset>
@@ -110,19 +131,8 @@ export default function Booking() {
 
           {step === 2 && (
             <fieldset className="booking-step active">
-              <legend>Pick a day and time</legend>
-              <div className="date-strip">
-                {bookingDates.map(({ label, date }) => (
-                  <button
-                    className={`slot-button${selectedDate === date ? " active" : ""}`}
-                    key={date}
-                    type="button"
-                    onClick={() => setSelectedDate(date)}
-                  >
-                    {label} {date}
-                  </button>
-                ))}
-              </div>
+              <legend>Pick a time preference</legend>
+              <p className="addons-label" style={{ marginBottom: 14 }}>Chelsea will confirm a date that works for you.</p>
               <div className="time-grid">
                 {bookingTimes.map((time) => (
                   <button
@@ -137,7 +147,14 @@ export default function Booking() {
               </div>
               <div className="step-actions">
                 <button className="button ghost" type="button" onClick={() => moveTo(1)}>Back</button>
-                <button className="button primary" type="button" onClick={() => moveTo(3)}>Continue</button>
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={() => moveTo(3)}
+                  disabled={!selectedTime}
+                >
+                  Continue
+                </button>
               </div>
             </fieldset>
           )}
@@ -175,11 +192,21 @@ export default function Booking() {
 
         <aside className="booking-summary" aria-live="polite" data-reveal style={{ "--delay": "120ms" }}>
           <span className="panel-kicker">Appointment summary</span>
-          <h3>{selectedService.name}</h3>
+          {selectedService ? (
+            <h3>{selectedService.name}</h3>
+          ) : (
+            <p className="summary-muted">No service selected yet.</p>
+          )}
           <dl>
+            {selectedService && (
+              <div>
+                <dt>Duration</dt>
+                <dd>{selectedService.duration}</dd>
+              </div>
+            )}
             <div>
-              <dt>When</dt>
-              <dd>{selectedDate} at {selectedTime}</dd>
+              <dt>Time preference</dt>
+              <dd>{selectedTime || "Not selected yet"}</dd>
             </div>
             {selectedAddOns.length > 0 && (
               <div>

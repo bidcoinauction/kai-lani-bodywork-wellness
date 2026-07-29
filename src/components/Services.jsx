@@ -25,26 +25,21 @@ export default function Services() {
           </article>
         ))}
       </div>
-      <div className="section-heading addon-heading" data-reveal>
+      <div className="addon-heading" data-reveal>
         <p className="eyebrow">Add-ons</p>
         <h3>Enhance your session with an extra touch.</h3>
       </div>
-      <div className="addon-grid">
-        {addOns.map((addOn, index) => (
-          <article
-            className="service-card addon"
-            data-reveal
-            key={addOn.id}
-            style={{ "--delay": `${index * 90}ms` }}
-          >
-            <div className="service-topline">
-              <span>Add-on</span>
-              <strong>{addOn.duration || ""}</strong>
+      <div className="addons-panel" data-reveal style={{ "--delay": "60ms" }}>
+        {addOns.map((addOn) => (
+          <div className="addon-row" key={addOn.id}>
+            <div className="addon-info">
+              <span className="addon-name">{addOn.name}</span>
+              {addOn.duration && (
+                <span className="addon-duration">· {addOn.duration}</span>
+              )}
             </div>
-            <h3>{addOn.name}</h3>
-            <p>{addOn.description}</p>
-            <span className="price">{addOn.price}</span>
-          </article>
+            <span className="addon-price">{addOn.price}</span>
+          </div>
         ))}
       </div>
     </section>

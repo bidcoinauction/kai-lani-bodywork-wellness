@@ -44,13 +44,6 @@ export const addOns = [
   },
 ];
 
-export const bookingDates = [
-  { label: "Fri", date: "May 1" },
-  { label: "Sat", date: "May 2" },
-  { label: "Tue", date: "May 5" },
-  { label: "Thu", date: "May 7" },
-];
-
 export const bookingTimes = ["9:30 AM", "11:00 AM", "1:30 PM", "3:00 PM", "4:30 PM", "6:00 PM"];
 
 export const experienceHighlights = [
