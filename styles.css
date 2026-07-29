@@ -592,14 +592,8 @@ h3 {
 }
 
 .service-card p {
-  color: rgba(16, 32, 43, 0.7);
-}
-
-.price {
   margin-top: auto;
-  color: var(--coral);
-  font-weight: 900;
-  font-size: 1.2rem;
+  color: rgba(16, 32, 43, 0.7);
 }
 
 .experience-section {

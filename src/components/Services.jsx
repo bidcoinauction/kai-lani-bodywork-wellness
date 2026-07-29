@@ -21,7 +21,6 @@ export default function Services() {
             </div>
             <h3>{service.name}</h3>
             <p>{service.description}</p>
-            <span className="price">{service.price}</span>
           </article>
         ))}
       </div>
