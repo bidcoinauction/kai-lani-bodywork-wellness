@@ -87,11 +87,11 @@ export default function Booking() {
                       <strong>{service.duration}</strong>
                     </div>
                     <h3>{service.name}</h3>
-                    {selectedService?.id === service.id && (
-                      <div className="booking-service-bottom">
-                        <span className="selected-label">Selected</span>
-                      </div>
-                    )}
+                    <div className="booking-service-bottom">
+                      {selectedService?.id === service.id && (
+                        <span className="selected-label">Selected ✓</span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -119,14 +119,17 @@ export default function Booking() {
                   );
                 })}
               </div>
-              <button
-                className="button primary next-button"
-                type="button"
-                onClick={() => moveTo(2)}
-                disabled={!selectedService}
-              >
-                Continue
-              </button>
+              <div className="step-footer">
+                {selectedService && <span className="step-total">Total {totalPrice}</span>}
+                <button
+                  className="button primary next-button"
+                  type="button"
+                  onClick={() => moveTo(2)}
+                  disabled={!selectedService}
+                >
+                  Continue
+                </button>
+              </div>
             </fieldset>
           )}
 
