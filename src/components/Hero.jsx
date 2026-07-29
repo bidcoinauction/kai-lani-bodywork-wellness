@@ -2,7 +2,7 @@ export default function Hero() {
   return (
     <section className="hero">
       <div className="hero-content">
-        <p className="eyebrow hero-kicker">Opening May 1, 2026 · Downtown Mount Holly</p>
+        <p className="eyebrow hero-kicker">Downtown Mount Holly</p>
         <h1>Kai Lani Bodywork & Wellness</h1>
         <p className="hero-copy">
           Therapeutic massage and restorative bodywork by Chelsea Askew, NC LMBT license no. 19862.
