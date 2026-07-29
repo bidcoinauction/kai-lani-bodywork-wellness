@@ -3,29 +3,44 @@ export const ncSealSrc = "/nc-seal-red.jpg";
 
 export const services = [
   {
-    id: "therapeutic",
+    id: "deep-tissue-60",
     number: "01",
     duration: "60 min",
-    name: "Therapeutic Massage",
-    description: "Focused hands-on work for tension, everyday aches, and nervous system support.",
-    price: "$95",
+    name: "Deep Tissue or Customized Massage",
+    description: "Focused deep tissue work tailored to your needs for tension relief and recovery.",
+    price: "$93",
   },
   {
-    id: "signature",
+    id: "prenatal-60",
     number: "02",
-    duration: "75 min",
-    name: "Signature Bodywork",
-    description: "A balanced session with time for deeper focus areas and full-body restoration.",
-    price: "$120",
-    featured: true,
+    duration: "60 min",
+    name: "Prenatal Massage",
+    description: "Safe, supportive prenatal massage for comfort and relaxation during pregnancy.",
+    price: "$97",
   },
   {
-    id: "extended",
+    id: "deep-tissue-90",
     number: "03",
     duration: "90 min",
-    name: "Extended Reset",
-    description: "Extra time for complex tension patterns, slower pacing, and longer integration.",
-    price: "$145",
+    name: "Deep Tissue or Customized Massage",
+    description: "Extended session for deeper work, complex tension patterns, and fuller restoration.",
+    price: "$123",
+  },
+];
+
+export const addOns = [
+  {
+    id: "facial-massage",
+    name: "Facial Massage",
+    duration: "15 min",
+    price: "$30",
+    description: "Soothing facial massage to release jaw and temple tension.",
+  },
+  {
+    id: "aromatherapy",
+    name: "Aromatherapy",
+    price: "$10",
+    description: "Bergamot, lavender, and other available scents.",
   },
 ];
 

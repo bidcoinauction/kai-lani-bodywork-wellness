@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { bookingDates, bookingTimes, services } from "../data.js";
+import { addOns, bookingDates, bookingTimes, services } from "../data.js";
 
 export default function Booking() {
   const [step, setStep] = useState(1);
@@ -9,14 +9,31 @@ export default function Booking() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedAddOns, setSelectedAddOns] = useState([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  function toggleAddOn(addOnId) {
+    setSelectedAddOns((prev) =>
+      prev.includes(addOnId) ? prev.filter((id) => id !== addOnId) : [...prev, addOnId]
+    );
+  }
+
+  const totalPrice = useMemo(() => {
+    const base = parseInt(selectedService.price.replace("$", ""));
+    const extras = selectedAddOns.reduce((sum, id) => {
+      const addOn = addOns.find((a) => a.id === id);
+      return sum + parseInt(addOn.price.replace("$", ""));
+    }, 0);
+    return `$${base + extras}`;
+  }, [selectedService, selectedAddOns]);
 
   const summaryNote = useMemo(() => {
     if (!isSubmitted) return "No payment is collected today.";
+    const addOnText = selectedAddOns.length > 0 ? ` with ${selectedAddOns.map((id) => addOns.find((a) => a.id === id).name.toLowerCase()).join(" & ")}` : "";
     return name.trim()
-      ? `Thanks, ${name.trim()}. Your request is ready for Chelsea to confirm.`
-      : "Your request is ready for Chelsea to confirm.";
-  }, [isSubmitted, name]);
+      ? `Thanks, ${name.trim()}${addOnText}. Your request is ready for Chelsea to confirm.`
+      : `Your request${addOnText} is ready for Chelsea to confirm.`;
+  }, [isSubmitted, name, selectedAddOns]);
 
   function moveTo(nextStep) {
     setStep(Math.min(Math.max(nextStep, 1), 3));
@@ -68,6 +85,21 @@ export default function Booking() {
                     <small>{service.duration} · {service.price}</small>
                   </span>
                   {selectedService.id === service.id && <em>Selected</em>}
+                </label>
+              ))}
+              <p style={{ margin: "24px 0 12px", fontWeight: 800 }}>Add-ons</p>
+              {addOns.map((addOn) => (
+                <label className="choice-card" key={addOn.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedAddOns.includes(addOn.id)}
+                    onChange={() => toggleAddOn(addOn.id)}
+                  />
+                  <span>
+                    <strong>{addOn.name}</strong>
+                    <small>{addOn.duration ? `${addOn.duration} · ` : ""}{addOn.price} — {addOn.description}</small>
+                  </span>
+                  {selectedAddOns.includes(addOn.id) && <em>Added</em>}
                 </label>
               ))}
               <button className="button primary next-button" type="button" onClick={() => moveTo(2)}>
@@ -148,6 +180,16 @@ export default function Booking() {
             <div>
               <dt>When</dt>
               <dd>{selectedDate} at {selectedTime}</dd>
+            </div>
+            {selectedAddOns.length > 0 && (
+              <div>
+                <dt>Add-ons</dt>
+                <dd>{selectedAddOns.map((id) => addOns.find((a) => a.id === id).name).join(", ")}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Total</dt>
+              <dd>{totalPrice}</dd>
             </div>
             <div>
               <dt>Location</dt>
