@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { addOns, MASSAGEBOOK_URL, services } from "../data.js";
+import { addOns, GIFT_CERT_URL, services } from "../data.js";
 
 export default function Booking() {
   const [selectedService, setSelectedService] = useState(null);
@@ -79,20 +79,25 @@ export default function Booking() {
           {/* data-mount="massagebook-widget" is the replacement boundary for the official MassageBook embed snippet */}
           {selectedService && (
             <div className="booking-integration" data-mount="massagebook-widget">
-              <p className="integration-total">Total {totalPrice}</p>
-              <div className="integration-preview">
-                <span className="integration-badge">MassageBook booking preview</span>
-                <h3 className="integration-heading">Complete your booking</h3>
-                <p className="integration-copy">Once connected, clients will be able to view live availability and complete their booking here without leaving the Kai Lani website.</p>
-                <a
-                  className="button primary integration-fallback"
-                  href={MASSAGEBOOK_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  View Kai Lani on MassageBook
-                </a>
+              <p className="estimated-total">Estimated session total: {totalPrice}</p>
+              <p className="estimated-note">Select your appointment again below to view live availability and book securely through MassageBook.</p>
+              <div className="massagebook-frame-container">
+                <iframe
+                  src="https://www.massagebook.com/therapists/kai-lani-bodywork-wellness/widget/services"
+                  title="Book an appointment with Kai Lani Bodywork & Wellness"
+                  className="massagebook-booking-frame"
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
               </div>
+              <a
+                className="gift-cert-link"
+                href={GIFT_CERT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Gift certificates
+              </a>
             </div>
           )}
         </div>

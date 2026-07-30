@@ -1,5 +1,3 @@
-import { MASSAGEBOOK_URL, reviewsData } from "../data.js";
-
 export default function Reviews() {
   return (
     <section className="reviews-section" id="reviews">
@@ -8,34 +6,24 @@ export default function Reviews() {
         <h2>What clients are saying.</h2>
         <div className="reviews-rating">
           <span className="reviews-stars">
-            <span aria-hidden="true">★</span> {reviewsData.averageRating}
+            <span aria-hidden="true">★</span> 5.0
           </span>
-          <p>Based on {reviewsData.totalReviews} verified MassageBook reviews.</p>
+          <p>Based on 22 verified MassageBook reviews.</p>
         </div>
         <div className="reviews-stats">
-          <span className="reviews-stat">Ambiance: {reviewsData.ambiance}</span>
-          <span className="reviews-stat">Professionalism: {reviewsData.professionalism}</span>
+          <span className="reviews-stat">Ambiance: 99%</span>
+          <span className="reviews-stat">Professionalism: 100%</span>
         </div>
       </div>
-      <div className="reviews-grid" data-reveal>
-        {reviewsData.items.map((review, index) => (
-          <div className="review-card" key={index}>
-            <p className="review-text">&ldquo;{review.text}&rdquo;</p>
-            <div className="review-footer">
-              <span className="review-name">{review.name}</span>
-              <span className="review-verified">Verified MassageBook review</span>
-            </div>
-          </div>
-        ))}
+      <div className="massagebook-frame-container">
+        <iframe
+          src="https://www.massagebook.com/therapists/kai-lani-bodywork-wellness/widget/reviews"
+          title="Verified reviews for Kai Lani Bodywork & Wellness"
+          className="massagebook-reviews-frame"
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
       </div>
-      <a
-        className="button primary reviews-link"
-        href={MASSAGEBOOK_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Read all reviews on MassageBook
-      </a>
     </section>
   );
 }

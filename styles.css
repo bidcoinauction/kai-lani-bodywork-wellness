@@ -675,67 +675,6 @@ h3 {
   font-size: 0.95rem;
 }
 
-.reviews-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 28px;
-}
-
-.review-card {
-  display: flex;
-  flex-direction: column;
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--shell);
-  box-shadow: 0 12px 30px rgba(10, 31, 36, 0.05);
-  transition: transform 260ms var(--ease), box-shadow 260ms ease, border-color 220ms ease;
-}
-
-.review-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(217, 184, 111, 0.24);
-  box-shadow: var(--soft-shadow);
-}
-
-.review-text {
-  margin: 0 0 auto;
-  font-size: 1.02rem;
-  line-height: 1.6;
-  color: var(--ink);
-  font-weight: 500;
-}
-
-.review-footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-
-.review-name {
-  font-weight: 900;
-  font-size: 0.88rem;
-  color: var(--coral);
-}
-
-.review-verified {
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: rgba(16, 32, 43, 0.46);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.reviews-link {
-  display: inline-flex;
-}
-
 .booking-section {
   background: linear-gradient(180deg, var(--navy), #103d3d);
   color: var(--cream);
@@ -979,42 +918,14 @@ h3 {
   border-top: 1px solid var(--line);
 }
 
-.integration-total {
+.estimated-total {
   margin: 0;
   font-weight: 900;
   font-size: 1.1rem;
   color: var(--cream);
 }
 
-.integration-preview {
-  display: grid;
-  gap: 14px;
-  padding: 22px;
-  border: 1px dashed rgba(247, 240, 228, 0.28);
-  border-radius: var(--radius);
-  background: rgba(247, 240, 228, 0.04);
-}
-
-.integration-badge {
-  justify-self: start;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(217, 184, 111, 0.14);
-  color: var(--sand);
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-.integration-heading {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 900;
-  color: var(--cream);
-}
-
-.integration-copy {
+.estimated-note {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
@@ -1022,9 +933,47 @@ h3 {
   line-height: 1.5;
 }
 
-.integration-fallback {
+.massagebook-frame-container {
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.massagebook-booking-frame {
   width: 100%;
-  justify-content: center;
+  border: 0;
+  display: block;
+  min-height: 1000px;
+}
+
+.massagebook-reviews-frame {
+  width: 100%;
+  border: 0;
+  display: block;
+  min-height: 1000px;
+}
+
+.gift-cert-link {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: 1px solid rgba(247, 240, 228, 0.28);
+  border-radius: var(--radius);
+  color: var(--cream);
+  font-weight: 800;
+  font-size: 0.9rem;
+  transition: background 220ms ease, border-color 220ms ease;
+}
+
+.gift-cert-link:hover {
+  border-color: var(--sand);
+  background: rgba(247, 240, 228, 0.08);
+}
+
+.gift-cert-link::after {
+  content: "â†—";
+  font-size: 0.85rem;
 }
 
 .reviews-stats {
@@ -1409,7 +1358,19 @@ h3 {
     flex-direction: column;
   }
 
+  .massagebook-booking-frame,
+  .massagebook-reviews-frame {
+    min-height: 800px;
+  }
+
   .site-footer {
     display: grid;
+  }
+}
+
+@media (max-width: 480px) {
+  .massagebook-booking-frame,
+  .massagebook-reviews-frame {
+    min-height: 700px;
   }
 }

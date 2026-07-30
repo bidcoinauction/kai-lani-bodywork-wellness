@@ -44,19 +44,7 @@ export const addOns = [
   },
 ];
 
-export const MASSAGEBOOK_URL = "https://www.massagebook.com/search/NC/Mount%20Holly/massage-therapy/kai-lani-bodywork-wellness/";
-
-export const reviewsData = {
-  averageRating: 5.0,
-  totalReviews: 22,
-  ambiance: "99%",
-  professionalism: "100%",
-  items: [
-    { name: "Lisa L.", text: "Chelsea is great!" },
-    { name: "Jessica B.", text: "I've been going to Chelsea for a few years now, and she's always great!" },
-    { name: "Anonymous", text: "Chelsea is amazing, you will love her." },
-  ],
-};
+export const GIFT_CERT_URL = "https://www.massagebook.com/therapists/kai-lani-bodywork-wellness/gift-certificates?src=external";
 
 export const experienceHighlights = [
   "Clear intake before your session",
