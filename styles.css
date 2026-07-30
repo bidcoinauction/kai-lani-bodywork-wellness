@@ -831,118 +831,51 @@ h3 {
   font-size: 1rem;
 }
 
-.addons-label {
-  font-weight: 800;
-  margin: 0 0 10px;
+.booking-service-desc {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  font-weight: 500;
   color: rgba(16, 32, 43, 0.6);
-  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
-.booking-addon-grid {
+.booking-action {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.booking-addon-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #ffffff;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition: border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
-}
-
-.booking-addon-card:hover {
-  border-color: rgba(116, 61, 50, 0.22);
-  background: rgba(245, 195, 170, 0.06);
-}
-
-.booking-addon-card.selected {
-  border-color: var(--coral);
-  background: rgba(245, 195, 170, 0.1);
-  box-shadow: 0 0 0 2px rgba(116, 61, 50, 0.12);
-}
-
-.booking-addon-info {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.booking-addon-name {
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: var(--ink);
-}
-
-.booking-addon-duration {
-  color: rgba(16, 32, 43, 0.5);
-  font-size: 0.8rem;
-}
-
-.booking-addon-status {
-  flex-shrink: 0;
-  font-size: 0.75rem;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  color: var(--coral);
-  padding: 4px 10px;
-  border: 1px solid rgba(116, 61, 50, 0.2);
-  border-radius: 999px;
-  transition: background 220ms ease, color 220ms ease, border-color 220ms ease;
-}
-
-.booking-addon-status.added {
-  color: var(--shell);
-  background: var(--leaf);
-  border-color: var(--leaf);
-}
-
-.booking-integration {
-  display: grid;
-  gap: 16px;
-  margin-top: 18px;
+  gap: 14px;
+  margin-top: 20px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
 }
 
-.estimated-total {
-  margin: 0;
-  font-weight: 900;
-  font-size: 1.1rem;
-  color: var(--cream);
+.booking-cta {
+  width: 100%;
+  justify-content: center;
 }
 
-.estimated-note {
-  margin: 0;
+.external-icon {
   font-size: 0.85rem;
+  line-height: 1;
+}
+
+.booking-support-text {
+  margin: 0;
+  font-size: 0.82rem;
   font-weight: 600;
-  color: rgba(247, 240, 228, 0.6);
+  color: rgba(16, 32, 43, 0.55);
   line-height: 1.5;
+}
+
+.enhancements-note {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(16, 32, 43, 0.5);
+  font-style: italic;
 }
 
 .massagebook-frame-container {
   overflow: hidden;
   border-radius: var(--radius);
-}
-
-.massagebook-booking-frame {
-  width: 100%;
-  border: 0;
-  display: block;
-  min-height: 1000px;
 }
 
 .massagebook-reviews-frame {
@@ -1334,8 +1267,7 @@ h3 {
     width: 100%;
   }
 
-  .experience-list,
-  .booking-addon-grid {
+  .experience-list {
     grid-template-columns: 1fr;
   }
 
@@ -1358,7 +1290,6 @@ h3 {
     flex-direction: column;
   }
 
-  .massagebook-booking-frame,
   .massagebook-reviews-frame {
     min-height: 800px;
   }
@@ -1369,7 +1300,6 @@ h3 {
 }
 
 @media (max-width: 480px) {
-  .massagebook-booking-frame,
   .massagebook-reviews-frame {
     min-height: 700px;
   }
