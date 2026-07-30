@@ -1,105 +1,124 @@
-import { useState } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { bookingServices, GIFT_CERT_URL } from "../data.js";
 
 export default function Booking() {
-  const [selectedService, setSelectedService] = useState(null);
+  const trackRef = useRef(null);
+  const [index, setIndex] = useState(0);
+  const maxIndex = bookingServices.length - 1;
+  const scrollGuardRef = useRef(false);
+
+  const updateIndex = useCallback(() => {
+    if (scrollGuardRef.current) return;
+    const el = trackRef.current;
+    if (!el) return;
+    const { children } = el;
+    const containerLeft = el.getBoundingClientRect().left;
+    let closest = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < children.length; i++) {
+      const rect = children[i].getBoundingClientRect();
+      const dist = Math.abs(rect.left - containerLeft);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = i;
+      }
+    }
+    setIndex(Math.min(closest, maxIndex));
+  }, [maxIndex]);
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateIndex, { passive: true });
+    updateIndex();
+    return () => el.removeEventListener("scroll", updateIndex);
+  }, [updateIndex]);
+
+  function scrollTo(i) {
+    const el = trackRef.current;
+    if (!el) return;
+    const card = el.children[0];
+    if (!card) return;
+    const cardWidth = card.getBoundingClientRect().width;
+    const step = cardWidth + 12;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    scrollGuardRef.current = true;
+    el.scrollLeft = Math.min(i * step, maxScroll);
+    setIndex(i);
+    setTimeout(() => { scrollGuardRef.current = false; }, 0);
+  }
 
   return (
     <section className="booking-section" id="booking">
       <div className="section-heading" data-reveal>
-        <p className="eyebrow">Book</p>
-        <h2>Choose your service.</h2>
-        <p>Select a session type, then check availability and book securely through MassageBook.</p>
+        <p className="eyebrow">Online booking</p>
+        <h2>Choose your session.</h2>
+        <p>Select a service to view Chelsea&rsquo;s live availability and complete your appointment securely through MassageBook.</p>
       </div>
 
-      <div className="booking-shell">
-        <div className="booking-card" data-reveal>
-          <div className="booking-service-grid">
-            {bookingServices.map((service) => {
-              const isSelected = selectedService?.id === service.id;
-              return (
-                <button
-                  className={`booking-service-card${isSelected ? " selected" : ""}`}
-                  key={service.id}
-                  type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => setSelectedService(service)}
-                >
-                  <div className="booking-service-topline">
-                    <span>{service.number}</span>
-                    <strong>{service.duration}</strong>
-                  </div>
-                  <h3>{service.name}</h3>
-                  <p className="booking-service-desc">{service.description}</p>
-                  <div className="booking-service-bottom">
-                    {isSelected && (
-                      <span className="selected-label">Selected &#10003;</span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <aside className="booking-summary" aria-live="polite" data-reveal style={{ "--delay": "120ms" }}>
-          <span className="panel-kicker">Appointment summary</span>
-          {selectedService ? (
-            <h3>{selectedService.name}</h3>
-          ) : (
-            <p className="summary-muted">No service selected yet.</p>
-          )}
-          <dl>
-            {selectedService && (
-              <div>
-                <dt>Service</dt>
-                <dd>{selectedService.name}</dd>
-                <dd className="summary-detail">{selectedService.duration} — {selectedService.price}</dd>
+      <div className="booking-carousel-wrapper" data-reveal>
+        <div className="booking-carousel" ref={trackRef}>
+          {bookingServices.map((service, i) => (
+            <div className="booking-carousel-card" key={service.id}>
+              <div className="bcc-topline">
+                <span className="bcc-number">{service.number}</span>
+                <span className="bcc-duration">{service.duration}</span>
               </div>
-            )}
-            <div>
-              <dt>Total</dt>
-              <dd>{selectedService ? selectedService.price : "$0"}</dd>
-            </div>
-            <div>
-              <dt>Location</dt>
-              <dd>Downtown Mount Holly, NC</dd>
-            </div>
-            <div>
-              <dt>Contact</dt>
-              <dd>(980) 224-2462</dd>
-            </div>
-          </dl>
-
-          <div className="booking-action">
-            {selectedService ? (
+              <h3 className="bcc-name">{service.name}</h3>
+              <p className="bcc-desc">{service.description}</p>
               <a
-                className="button primary booking-cta"
-                href={selectedService.bookingUrl}
+                className="button sand compact bcc-link"
+                href={service.bookingUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`Check MassageBook availability for ${selectedService.name} — opens in a new tab`}
+                aria-label={`Book ${service.name} on MassageBook — opens in a new tab`}
               >
-                Check Availability &amp; Book
+                Book on MassageBook
                 <span className="external-icon" aria-hidden="true"> &#8599;</span>
               </a>
-            ) : (
-              <button className="button primary booking-cta" type="button" disabled>
-                Choose a session to continue
-              </button>
-            )}
-            <p className="booking-support-text">You&rsquo;ll choose your time and complete scheduling securely through MassageBook. Your appointment is confirmed only after you finish the MassageBook booking process.</p>
-            <p className="enhancements-note">Available enhancements can be selected during MassageBook checkout.</p>
-            <a
-              className="gift-cert-link"
-              href={GIFT_CERT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Gift certificates
-            </a>
-          </div>
-        </aside>
+            </div>
+          ))}
+        </div>
+
+        <button
+          className="booking-carousel-arrow prev"
+          aria-label="Previous service"
+          disabled={index === 0}
+          onClick={() => scrollTo(index - 1)}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M12 4L8 10L12 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <button
+          className="booking-carousel-arrow next"
+          aria-label="Next service"
+          disabled={index === maxIndex}
+          onClick={() => scrollTo(index + 1)}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M8 4L12 10L8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+
+        <div className="booking-carousel-indicator" aria-live="polite">
+          <span className="bci-current">{index + 1}</span>
+          <span className="bci-sep">of</span>
+          <span className="bci-total">{bookingServices.length}</span>
+        </div>
+      </div>
+
+      <div className="booking-after" data-reveal style={{ "--delay": "120ms" }}>
+        <p className="booking-footnote">MassageBook handles availability, appointment confirmation, intake, and payment settings.</p>
+        <p className="enhancements-note">Available enhancements can be selected during MassageBook checkout.</p>
+        <a
+          className="gift-cert-link"
+          href={GIFT_CERT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Gift certificates
+        </a>
       </div>
     </section>
   );
