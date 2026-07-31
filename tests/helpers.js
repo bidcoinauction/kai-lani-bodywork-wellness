@@ -1,7 +1,7 @@
 import {
   setSquareClientForTests,
   resetSquareClientForTests,
-} from "../api/lib/square.js";
+} from "../lib/square.js";
 
 export { setSquareClientForTests, resetSquareClientForTests };
 

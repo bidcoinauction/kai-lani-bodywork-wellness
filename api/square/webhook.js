@@ -1,5 +1,5 @@
-import { WebhooksHelper } from "../lib/square.js";
-import { readRawBody } from "../lib/read-raw-body.js";
+import { WebhooksHelper } from "../../lib/square.js";
+import { readRawBody } from "../../lib/read-raw-body.js";
 
 /**
  * Sandbox-only event-id dedupe.

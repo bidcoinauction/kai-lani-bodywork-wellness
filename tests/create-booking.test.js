@@ -1,13 +1,13 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import createBookingHandler from "../api/square/create-booking.js";
-import { resetSquareClientForTests } from "../api/lib/square.js";
+import { resetSquareClientForTests } from "../lib/square.js";
 import {
   addDays,
   addMinutes,
   getNewYorkDateString,
   startOfDayInTimeZone,
-} from "../api/lib/time.js";
+} from "../lib/time.js";
 import {
   makeRequest,
   makeResponse,

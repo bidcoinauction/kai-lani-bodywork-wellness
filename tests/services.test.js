@@ -5,7 +5,7 @@ import {
   SERVICE_KEYS,
   getServiceConfig,
   isServiceKey,
-} from "../api/lib/services.js";
+} from "../lib/services.js";
 import { clearSquareEnv, installFullConfig } from "./helpers.js";
 
 test("known service keys return a server-owned config", () => {

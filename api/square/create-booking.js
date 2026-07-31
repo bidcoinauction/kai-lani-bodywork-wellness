@@ -1,13 +1,13 @@
-import { getSquareClient } from "../lib/square.js";
-import { requireBookingConfig, ConfigError } from "../lib/config.js";
-import { isServiceKey } from "../lib/services.js";
-import { readJsonBody, BodyReadError } from "../lib/read-json-body.js";
+import { getSquareClient } from "../../lib/square.js";
+import { requireBookingConfig, ConfigError } from "../../lib/config.js";
+import { isServiceKey } from "../../lib/services.js";
+import { readJsonBody, BodyReadError } from "../../lib/read-json-body.js";
 import {
   getNewYorkDateString,
   addDays,
   startOfDayInTimeZone,
   addMinutes,
-} from "../lib/time.js";
+} from "../../lib/time.js";
 
 export const MAX_DAYS_AHEAD = 13;
 
