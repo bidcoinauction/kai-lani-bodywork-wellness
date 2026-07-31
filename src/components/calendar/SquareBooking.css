@@ -162,6 +162,116 @@
   color: rgba(16, 32, 43, 0.5);
 }
 
+.sqb-shell-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sqb-shell-header {
+  scroll-margin-top: 88px;
+}
+
+.sqb-mobile-only {
+  display: none;
+}
+
+/* Step transition */
+.sqb-step-anim {
+  animation: sqb-step-in 200ms ease both;
+}
+
+@keyframes sqb-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Mobile service carousel */
+.sqb-service-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+}
+
+.sqb-service-track::-webkit-scrollbar {
+  display: none;
+}
+
+.sqb-service-card.sqb-service-card-carousel {
+  flex: 0 0 85%;
+  scroll-snap-align: start;
+  min-height: 0;
+}
+
+.sqb-service-card-carousel .sqb-service-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sqb-carousel-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sqb-carousel-btn {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(16, 32, 43, 0.16);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.sqb-carousel-btn:hover {
+  border-color: var(--leaf);
+  background: rgba(0, 109, 91, 0.06);
+}
+
+.sqb-carousel-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.sqb-carousel-btn:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.sqb-carousel-count {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: rgba(16, 32, 43, 0.6);
+}
+
+/* Mobile sticky action bar */
+.sqb-mobile-action {
+  display: none;
+}
+
 /* Layout: main step content + sticky summary */
 .sqb-layout {
   display: grid;
@@ -744,34 +854,224 @@
 }
 
 /* Mobile */
-@media (max-width: 480px) {
-  .sqb-step-label {
-    font-size: 0.72rem;
+@media (max-width: 620px) {
+  .sqb-shell {
+    padding: 16px;
+    border-radius: 14px;
   }
 
-  .sqb-step-index {
-    width: 24px;
-    height: 24px;
+  .sqb-shell-title {
+    font-size: 1.4rem;
+    line-height: 1.15;
+    margin-top: 2px;
+  }
+
+  .sqb-shell-copy {
+    display: none;
+  }
+
+  .sqb-shell-copy.is-first {
+    display: block;
+  }
+
+  .sqb-sandbox-pill {
+    margin-top: 8px;
   }
 
   .sqb-step-count {
     display: block;
+    margin: 0;
   }
 
   .sqb-steps {
-    margin-top: 22px;
+    margin: 18px 0 2px;
+    gap: 6px;
+  }
+
+  .sqb-step {
+    flex: none;
+  }
+
+  .sqb-step-label {
+    display: none;
+  }
+
+  .sqb-step-index {
+    width: 26px;
+    height: 26px;
+  }
+
+  .sqb-desktop-only {
+    display: none;
+  }
+
+  .sqb-mobile-only {
+    display: block;
+  }
+
+  .sqb-layout {
+    margin-top: 14px;
+    gap: 14px;
+  }
+
+  .sqb-panel {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .sqb-heading {
+    margin: 0 0 14px;
+    font-size: 1.12rem;
+  }
+
+  .sqb-back {
+    margin-bottom: 6px;
+  }
+
+  /* Date: horizontal scroll-snap scroller */
+  .sqb-date-hint {
+    margin: 0 0 10px;
+    font-size: 0.8rem;
   }
 
   .sqb-date-grid {
-    gap: 5px;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-snap-stop: always;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    touch-action: pan-y;
+  }
+
+  .sqb-date-grid::-webkit-scrollbar {
+    display: none;
   }
 
   .sqb-date-cell {
-    min-height: 62px;
+    flex: 0 0 64px;
+    min-height: 56px;
+    padding: 8px 2px;
+    gap: 3px;
+    scroll-snap-align: start;
+  }
+
+  .sqb-date-weekday {
+    font-size: 0.62rem;
+  }
+
+  .sqb-date-day {
+    font-size: 0.98rem;
+  }
+
+  .sqb-date-month {
+    font-size: 0.6rem;
+  }
+
+  /* Time */
+  .sqb-time-date {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
   }
 
   .sqb-time-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .sqb-time-cell {
+    min-height: 48px;
+    padding: 8px 6px;
+    font-size: 0.86rem;
+  }
+
+  .sqb-error-box,
+  .sqb-empty {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .sqb-message {
+    margin: 0 0 10px;
+    font-size: 0.86rem;
+  }
+
+  /* Details */
+  .sqb-form {
+    gap: 14px;
+  }
+
+  .sqb-review {
+    padding: 12px 14px;
+  }
+
+  .sqb-review-list {
+    gap: 6px;
+  }
+
+  .sqb-fields {
+    gap: 10px;
+  }
+
+  /* Summary -> sticky action bar */
+  .sqb-summary {
+    display: none;
+  }
+
+  .sqb-mobile-action {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 16px -16px 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: #ffffff;
+    border-top: 1px solid rgba(16, 32, 43, 0.1);
+    box-shadow: 0 -10px 24px rgba(10, 31, 36, 0.12);
+  }
+
+  .sqb-mobile-summary {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .sqb-mobile-summary-main {
+    font-size: 0.84rem;
+    font-weight: 800;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sqb-mobile-summary-sub {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: rgba(16, 32, 43, 0.55);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sqb-mobile-primary {
+    flex: 1 1 auto;
+    min-width: 148px;
+    width: auto;
+    margin: 0;
+  }
+
+  /* Confirmation */
+  .sqb-confirm {
+    padding: 8px 4px 4px;
+    gap: 12px;
   }
 }
 
@@ -779,7 +1079,12 @@
   .sqb-service-card,
   .sqb-date-cell,
   .sqb-time-cell,
-  .sqb-primary {
+  .sqb-primary,
+  .sqb-carousel-btn {
     transition: none;
+  }
+
+  .sqb-step-anim {
+    animation: none;
   }
 }

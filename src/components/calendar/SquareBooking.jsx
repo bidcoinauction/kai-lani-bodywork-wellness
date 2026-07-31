@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import "./SquareBooking.css";
 
 /*
@@ -105,6 +105,14 @@ function formatDateLabel(dateStr) {
   });
 }
 
+function formatDateShort(dateStr) {
+  return nyFormat(dateStringToUtc(dateStr), {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function makeIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -138,6 +146,11 @@ export default function SquareBooking() {
   const [statusMessage, setStatusMessage] = useState("");
 
   const idempotencyRef = useRef(null);
+  const shellTopRef = useRef(null);
+  const serviceTrackRef = useRef(null);
+  const [serviceIndex, setServiceIndex] = useState(0);
+  const serviceScrollGuardRef = useRef(false);
+  const maxServiceIndex = SQUARE_SERVICES.length - 1;
 
   const headingRefs = {
     service: useRef(null),
@@ -149,7 +162,15 @@ export default function SquareBooking() {
 
   function goTo(nextStep) {
     setStep(nextStep);
-    requestAnimationFrame(() => headingRefs[nextStep]?.current?.focus());
+    requestAnimationFrame(() => {
+      const heading = headingRefs[nextStep]?.current;
+      if (typeof window !== "undefined" && window.matchMedia("(max-width: 620px)").matches) {
+        shellTopRef.current?.scrollIntoView({ block: "start" });
+        heading?.focus({ preventScroll: true });
+      } else {
+        heading?.focus();
+      }
+    });
   }
 
   const selectedService = SQUARE_SERVICES.find((s) => s.key === serviceKey) || null;
@@ -326,12 +347,94 @@ export default function SquareBooking() {
     else if (step === "contact") goTo("time");
   }
 
+  const updateServiceIndex = useCallback(() => {
+    if (serviceScrollGuardRef.current) return;
+    const el = serviceTrackRef.current;
+    if (!el) return;
+    const { children } = el;
+    const containerLeft = el.getBoundingClientRect().left;
+    let closest = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < children.length; i += 1) {
+      const rect = children[i].getBoundingClientRect();
+      const dist = Math.abs(rect.left - containerLeft);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = i;
+      }
+    }
+    setServiceIndex(Math.min(closest, maxServiceIndex));
+  }, [maxServiceIndex]);
+
+  useEffect(() => {
+    const el = serviceTrackRef.current;
+    if (!el) return undefined;
+    el.addEventListener("scroll", updateServiceIndex, { passive: true });
+    updateServiceIndex();
+    return () => el.removeEventListener("scroll", updateServiceIndex);
+  }, [updateServiceIndex, step]);
+
+  function scrollServiceTo(i) {
+    const el = serviceTrackRef.current;
+    if (!el) return;
+    const card = el.children[0];
+    if (!card) return;
+    const cardWidth = card.getBoundingClientRect().width;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    serviceScrollGuardRef.current = true;
+    el.scrollLeft = Math.min(i * (cardWidth + 12), maxScroll);
+    setServiceIndex(i);
+    setTimeout(() => {
+      serviceScrollGuardRef.current = false;
+    }, 0);
+  }
+
+  function renderServiceCard(service, inCarousel = false) {
+    const isSelected = serviceKey === service.key;
+    return (
+      <button
+        key={service.key}
+        type="button"
+        className={`sqb-service-card${isSelected ? " is-selected" : ""}${inCarousel ? " sqb-service-card-carousel" : ""}`}
+        aria-pressed={isSelected}
+        onClick={() => selectService(service.key)}
+      >
+        <span className="sqb-service-select" aria-hidden="true">
+          {isSelected && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          )}
+        </span>
+        <span className="sqb-service-name">{service.name}</span>
+        <span className="sqb-service-duration">{service.duration}</span>
+        <span className="sqb-service-desc">{service.description}</span>
+      </button>
+    );
+  }
+
+  const mobileMain = selectedService?.name || "Choose a session";
+  const mobileSub = !selectedService
+    ? ""
+    : selectedSlot
+      ? `${formatDateShort(date)} · ${selectedSlot.label}`
+      : date
+        ? formatDateShort(date)
+        : "Select a day and time";
+
   return (
     <div className="sqb-shell">
-      <header className="sqb-shell-header">
-        <p className="sqb-eyebrow">Online booking</p>
+      <header className="sqb-shell-header" ref={shellTopRef}>
+        <div className="sqb-shell-topline">
+          <p className="sqb-eyebrow">Online booking</p>
+          <p className="sqb-step-count" aria-hidden="true">
+            Step {Math.min(STEP_ORDER.indexOf(step) + 1, 4)} of 4
+          </p>
+        </div>
         <h2 className="sqb-shell-title">Find a time that works for you.</h2>
-        <p className="sqb-shell-copy">Choose your session, then select an available day and time.</p>
+        <p className={`sqb-shell-copy${step === "service" ? " is-first" : ""}`}>
+          Choose your session, then select an available day and time.
+        </p>
         <p className="sqb-sandbox-pill" role="note">
           Sandbox preview &mdash; test bookings only
         </p>
@@ -372,13 +475,9 @@ export default function SquareBooking() {
         })}
       </ol>
 
-      <p className="sqb-step-count" aria-hidden="true">
-        Step {Math.min(STEP_ORDER.indexOf(step) + 1, 4)} of 4
-      </p>
-
       <div className="sqb-layout">
         <div className="sqb-main">
-          <div className="sqb-panel">
+          <div key={step} className="sqb-panel sqb-step-anim">
             {step !== "service" && step !== "confirm" && (
               <button type="button" className="sqb-back" onClick={goBack}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -394,38 +493,51 @@ export default function SquareBooking() {
             </h3>
 
             {step === "service" && (
-              <div className="sqb-service-groups">
-                {STEP_GROUPS.map((group) => (
-                  <div className="sqb-service-group" key={group.label}>
-                    <p className="sqb-service-group-label">{group.label}</p>
-                    <div className="sqb-service-grid" role="group" aria-label={group.label}>
-                      {group.services.map((service) => {
-                        const isSelected = serviceKey === service.key;
-                        return (
-                          <button
-                            key={service.key}
-                            type="button"
-                            className={`sqb-service-card${isSelected ? " is-selected" : ""}`}
-                            aria-pressed={isSelected}
-                            onClick={() => selectService(service.key)}
-                          >
-                            <span className="sqb-service-select" aria-hidden="true">
-                              {isSelected && (
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M20 6L9 17l-5-5" />
-                                </svg>
-                              )}
-                            </span>
-                            <span className="sqb-service-name">{service.name}</span>
-                            <span className="sqb-service-duration">{service.duration}</span>
-                            <span className="sqb-service-desc">{service.description}</span>
-                          </button>
-                        );
-                      })}
+              <>
+                <div className="sqb-service-groups sqb-desktop-only">
+                  {STEP_GROUPS.map((group) => (
+                    <div className="sqb-service-group" key={group.label}>
+                      <p className="sqb-service-group-label">{group.label}</p>
+                      <div className="sqb-service-grid" role="group" aria-label={group.label}>
+                        {group.services.map((service) => renderServiceCard(service))}
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                <div className="sqb-service-carousel sqb-mobile-only">
+                  <div className="sqb-service-track" ref={serviceTrackRef} role="group" aria-label="Available sessions">
+                    {SQUARE_SERVICES.map((service) => renderServiceCard(service, true))}
                   </div>
-                ))}
-              </div>
+                  <div className="sqb-carousel-controls">
+                    <button
+                      type="button"
+                      className="sqb-carousel-btn prev"
+                      aria-label="Previous session"
+                      disabled={serviceIndex === 0}
+                      onClick={() => scrollServiceTo(serviceIndex - 1)}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M15 18l-6-6 6-6" />
+                      </svg>
+                    </button>
+                    <p className="sqb-carousel-count" aria-live="polite">
+                      {serviceIndex + 1} of {SQUARE_SERVICES.length}
+                    </p>
+                    <button
+                      type="button"
+                      className="sqb-carousel-btn next"
+                      aria-label="Next session"
+                      disabled={serviceIndex === maxServiceIndex}
+                      onClick={() => scrollServiceTo(serviceIndex + 1)}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
 
             {step === "date" && (
@@ -459,7 +571,7 @@ export default function SquareBooking() {
             {step === "time" && (
               <div>
                 <p className="sqb-time-date">
-                  {date ? formatDateLabel(date) : ""}
+                  {date ? formatDateShort(date) : ""}
                 </p>
 
                 {loadingSlots && <p className="sqb-message">Loading available times&hellip;</p>}
@@ -681,6 +793,26 @@ export default function SquareBooking() {
           </aside>
         )}
       </div>
+
+      {step !== "confirm" && (
+        <div className="sqb-mobile-action">
+          {step !== "contact" && (
+            <div className="sqb-mobile-summary">
+              <span className="sqb-mobile-summary-main">{mobileMain}</span>
+              <span className="sqb-mobile-summary-sub">{mobileSub}</span>
+            </div>
+          )}
+          <button
+            type={step === "contact" ? "submit" : "button"}
+            className="button primary sqb-primary sqb-mobile-primary"
+            form={step === "contact" ? "sqb-form" : undefined}
+            disabled={primaryDisabled}
+            onClick={step === "contact" ? undefined : handlePrimary}
+          >
+            {primaryLabel}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
