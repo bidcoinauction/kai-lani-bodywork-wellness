@@ -53,28 +53,21 @@ export default function Booking() {
 
   return (
     <section className="booking-section" id="booking">
-      <div className="section-heading" data-reveal>
-        <p className="eyebrow">Online booking</p>
-        <h2>Choose your session.</h2>
-        {SQUARE_SANDBOX_ENABLED ? (
-          <p>
-            Select a service to view Chelsea&rsquo;s live availability and complete your appointment
-            securely through Square Appointments (sandbox test mode).
-          </p>
-        ) : (
-          <p>
-            Select a service to view Chelsea&rsquo;s live availability and complete your appointment
-            securely through MassageBook.
-          </p>
-        )}
-      </div>
-
       {SQUARE_SANDBOX_ENABLED ? (
         <div data-reveal>
           <SquareBooking />
         </div>
       ) : (
         <>
+          <div className="section-heading" data-reveal>
+            <p className="eyebrow">Online booking</p>
+            <h2>Choose your session.</h2>
+            <p>
+              Select a service to view Chelsea&rsquo;s live availability and complete your appointment
+              securely through MassageBook.
+            </p>
+          </div>
+
           <div className="booking-carousel-wrapper" data-reveal>
             <div className="booking-carousel" ref={trackRef}>
               {bookingServices.map((service, i) => (

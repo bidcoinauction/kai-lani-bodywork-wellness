@@ -3,10 +3,10 @@ import "./SquareBooking.css";
 
 /*
  * Square Appointments sandbox booking flow (4 steps):
- *   Service -> Date -> Time -> Contact & confirm
+ *   Service -> Date -> Time -> Details & confirm
  *
  * Rendered only when VITE_ENABLE_SQUARE_SANDBOX is "true" (Vercel Preview).
- * The visible "Sandbox test mode" label keeps it clearly separate from
+ * The compact "Sandbox preview" pill keeps it clearly separate from
  * production booking. This component never imports the Square server client.
  */
 
@@ -18,6 +18,7 @@ const SQUARE_SERVICES = [
     key: "customized_60",
     name: "60 Min Customized Massage",
     duration: "60 min",
+    price: "$93",
     description:
       "A deeply personalized session tailored to your body\u2019s unique needs using a blend of intuitive touch and targeted techniques.",
   },
@@ -25,6 +26,7 @@ const SQUARE_SERVICES = [
     key: "deep_tissue_60",
     name: "60 Min Customized Deep Tissue Massage",
     duration: "60 min",
+    price: "$93",
     description:
       "Focused deep tissue work to relieve severe tension and improve range of motion.",
   },
@@ -32,6 +34,7 @@ const SQUARE_SERVICES = [
     key: "prenatal_60",
     name: "60 Min Customized Prenatal Massage",
     duration: "60 min",
+    price: "$97",
     description:
       "Safe, supportive prenatal massage for comfort and relaxation during pregnancy.",
   },
@@ -39,15 +42,22 @@ const SQUARE_SERVICES = [
     key: "customized_90",
     name: "90 Min Customized Massage",
     duration: "90 min",
+    price: "$123",
     description: "Extended session for deeper relaxation and fuller restoration.",
   },
   {
     key: "deep_tissue_90",
     name: "90 Min Customized Deep Tissue Massage",
     duration: "90 min",
+    price: "$123",
     description:
       "Extended deep tissue session for complex tension patterns and full-body recovery.",
   },
+];
+
+const STEP_GROUPS = [
+  { label: "60-minute sessions", services: SQUARE_SERVICES.filter((s) => s.duration === "60 min") },
+  { label: "90-minute sessions", services: SQUARE_SERVICES.filter((s) => s.duration === "90 min") },
 ];
 
 function nyFormat(date, options) {
@@ -79,6 +89,8 @@ function getDateOptions() {
       dateStr: nyDateString(utc),
       weekday: nyFormat(utc, { weekday: "short" }),
       dayOfMonth: nyFormat(utc, { day: "numeric" }),
+      monthShort: nyFormat(utc, { month: "short" }),
+      isToday: i === 0,
     });
   }
   return options;
@@ -105,7 +117,7 @@ const STEP_META = {
   service: { label: "Service", heading: "Choose your session." },
   date: { label: "Date", heading: "Pick a day." },
   time: { label: "Time", heading: "Pick a time." },
-  contact: { label: "Contact", heading: "Your details." },
+  contact: { label: "Details", heading: "Your details." },
   confirm: { label: "Confirmation", heading: "You\u2019re booked." },
 };
 
@@ -164,7 +176,6 @@ export default function SquareBooking() {
     setBookingError(null);
     setBookingResult(null);
     idempotencyRef.current = null;
-    goTo("date");
   }
 
   function selectDate(dateStr) {
@@ -277,13 +288,54 @@ export default function SquareBooking() {
 
   const dateOptions = getDateOptions();
   const activeStep = STEP_META[step];
-  const canShowSummary = selectedService && (date || selectedSlot || step === "confirm");
+
+  const primaryDisabled =
+    step === "service" ? !serviceKey
+    : step === "date" ? !date
+    : step === "time" ? !selectedSlot
+    : step === "contact" ? submitting
+    : true;
+
+  const primaryLabel =
+    step === "contact"
+      ? submitting
+        ? "Creating appointment\u2026"
+        : "Confirm test booking"
+      : "Continue";
+
+  function handlePrimary() {
+    if (step === "service" && serviceKey) goTo("date");
+    else if (step === "date" && date) continueToTime();
+    else if (step === "time" && selectedSlot) continueToContact();
+  }
+
+  const contactName = [contact.firstName.trim(), contact.lastName.trim()]
+    .filter(Boolean)
+    .join(" ");
+
+  const summaryRows = [
+    { key: "service", label: "Service", value: selectedService?.name, sub: selectedService?.duration },
+    { key: "date", label: "Date", value: date ? formatDateLabel(date) : null },
+    { key: "time", label: "Time", value: selectedSlot?.label || null },
+    { key: "price", label: "Price", value: selectedService?.price || null },
+  ];
+
+  function goBack() {
+    if (step === "date") goTo("service");
+    else if (step === "time") goTo("date");
+    else if (step === "contact") goTo("time");
+  }
 
   return (
-    <div className="sqb-flow">
-      <p className="sqb-sandbox-banner" role="note">
-        Sandbox test mode &mdash; this calendar is for testing only and is not connected to live booking.
-      </p>
+    <div className="sqb-shell">
+      <header className="sqb-shell-header">
+        <p className="sqb-eyebrow">Online booking</p>
+        <h2 className="sqb-shell-title">Find a time that works for you.</h2>
+        <p className="sqb-shell-copy">Choose your session, then select an available day and time.</p>
+        <p className="sqb-sandbox-pill" role="note">
+          Sandbox preview &mdash; test bookings only
+        </p>
+      </header>
 
       <p className="sqb-status" role="status" aria-live="polite">
         {statusMessage}
@@ -296,47 +348,90 @@ export default function SquareBooking() {
           const isDone = index < STEP_ORDER.indexOf(step);
           return (
             <li key={name} className={`sqb-step${isActive ? " is-active" : ""}${isDone ? " is-done" : ""}`}>
-              <span className="sqb-step-index" aria-hidden="true">{index + 1}</span>
-              <span>{meta.label}</span>
+              <button
+                type="button"
+                className="sqb-step-btn"
+                onClick={() => isDone && goTo(name)}
+                disabled={!isDone}
+                aria-current={isActive ? "step" : undefined}
+                aria-label={`${meta.label}${isDone ? " (completed)" : ""}`}
+              >
+                <span className="sqb-step-index" aria-hidden="true">
+                  {isDone ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                <span className="sqb-step-label">{meta.label}</span>
+              </button>
             </li>
           );
         })}
       </ol>
 
+      <p className="sqb-step-count" aria-hidden="true">
+        Step {Math.min(STEP_ORDER.indexOf(step) + 1, 4)} of 4
+      </p>
+
       <div className="sqb-layout">
         <div className="sqb-main">
           <div className="sqb-panel">
+            {step !== "service" && step !== "confirm" && (
+              <button type="button" className="sqb-back" onClick={goBack}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M19 12H5" />
+                  <path d="M12 19l-7-7 7-7" />
+                </svg>
+                Back
+              </button>
+            )}
+
             <h3 className="sqb-heading" tabIndex={-1} ref={headingRefs[step]}>
               {activeStep.heading}
             </h3>
 
             {step === "service" && (
-              <div className="sqb-service-list">
-                {SQUARE_SERVICES.map((service) => {
-                  const isSelected = serviceKey === service.key;
-                  return (
-                    <button
-                      key={service.key}
-                      type="button"
-                      className={`sqb-service-card${isSelected ? " is-selected" : ""}`}
-                      aria-pressed={isSelected}
-                      onClick={() => selectService(service.key)}
-                    >
-                      <span className="sqb-service-topline">
-                        <strong>{service.name}</strong>
-                        <span className="sqb-service-duration">{service.duration}</span>
-                      </span>
-                      <span className="sqb-service-desc">{service.description}</span>
-                    </button>
-                  );
-                })}
+              <div className="sqb-service-groups">
+                {STEP_GROUPS.map((group) => (
+                  <div className="sqb-service-group" key={group.label}>
+                    <p className="sqb-service-group-label">{group.label}</p>
+                    <div className="sqb-service-grid" role="group" aria-label={group.label}>
+                      {group.services.map((service) => {
+                        const isSelected = serviceKey === service.key;
+                        return (
+                          <button
+                            key={service.key}
+                            type="button"
+                            className={`sqb-service-card${isSelected ? " is-selected" : ""}`}
+                            aria-pressed={isSelected}
+                            onClick={() => selectService(service.key)}
+                          >
+                            <span className="sqb-service-select" aria-hidden="true">
+                              {isSelected && (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M20 6L9 17l-5-5" />
+                                </svg>
+                              )}
+                            </span>
+                            <span className="sqb-service-name">{service.name}</span>
+                            <span className="sqb-service-duration">{service.duration}</span>
+                            <span className="sqb-service-desc">{service.description}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {step === "date" && (
               <div>
                 <p className="sqb-date-hint">
-                  Showing availability for the next {BOOKING_WINDOW_DAYS} days (Eastern time).
+                  Showing the next {BOOKING_WINDOW_DAYS} days (Eastern time).
                 </p>
                 <div className="sqb-date-grid" role="group" aria-label="Available dates">
                   {dateOptions.map((option) => {
@@ -345,49 +440,46 @@ export default function SquareBooking() {
                       <button
                         key={option.dateStr}
                         type="button"
-                        className={`sqb-date-cell${isSelected ? " is-selected" : ""}`}
+                        className={`sqb-date-cell${isSelected ? " is-selected" : ""}${option.isToday ? " is-today" : ""}`}
                         aria-pressed={isSelected}
                         onClick={() => selectDate(option.dateStr)}
                       >
-                        <span className="sqb-date-weekday">{option.weekday}</span>
+                        <span className="sqb-date-weekday">
+                          {option.isToday ? "Today" : option.weekday}
+                        </span>
                         <span className="sqb-date-day">{option.dayOfMonth}</span>
+                        <span className="sqb-date-month">{option.monthShort}</span>
                       </button>
                     );
                   })}
-                </div>
-                <div className="sqb-actions">
-                  <button type="button" className="button secondary" onClick={() => goTo("service")}>
-                    &larr; Back
-                  </button>
-                  <button
-                    type="button"
-                    className="button primary"
-                    disabled={!date}
-                    onClick={continueToTime}
-                  >
-                    Continue
-                  </button>
                 </div>
               </div>
             )}
 
             {step === "time" && (
               <div>
+                <p className="sqb-time-date">
+                  {date ? formatDateLabel(date) : ""}
+                </p>
+
                 {loadingSlots && <p className="sqb-message">Loading available times&hellip;</p>}
 
                 {!loadingSlots && slotError && (
-                  <div className="sqb-error-box">
+                  <div className="sqb-error-box" role="alert">
                     <p className="sqb-message sqb-error">{slotError}</p>
-                    <button type="button" className="button secondary" onClick={continueToTime}>
+                    <button type="button" className="sqb-retry" onClick={continueToTime}>
                       Try again
                     </button>
                   </div>
                 )}
 
                 {!loadingSlots && !slotError && slots.length === 0 && (
-                  <p className="sqb-message">
-                    No open times for this day. Please choose another date.
-                  </p>
+                  <div className="sqb-empty">
+                    <p className="sqb-message">No open times for this day. Please choose another date.</p>
+                    <button type="button" className="sqb-retry" onClick={() => goTo("date")}>
+                      Choose another day
+                    </button>
+                  </div>
                 )}
 
                 {!loadingSlots && !slotError && slots.length > 0 && (
@@ -408,142 +500,140 @@ export default function SquareBooking() {
                     })}
                   </div>
                 )}
-
-                <div className="sqb-actions">
-                  <button type="button" className="button secondary" onClick={() => goTo("date")}>
-                    &larr; Back
-                  </button>
-                  <button
-                    type="button"
-                    className="button primary"
-                    disabled={!selectedSlot}
-                    onClick={continueToContact}
-                  >
-                    Continue
-                  </button>
-                </div>
               </div>
             )}
 
             {step === "contact" && (
               <form
                 className="sqb-form"
+                id="sqb-form"
                 onSubmit={(event) => {
                   event.preventDefault();
                   submitBooking();
                 }}
               >
-                <div className="sqb-field">
-                  <label htmlFor="sqb-first-name">First name</label>
-                  <input
-                    id="sqb-first-name"
-                    name="firstName"
-                    type="text"
-                    autoComplete="given-name"
-                    value={contact.firstName}
-                    onChange={(e) => updateContact("firstName", e.target.value)}
-                    maxLength={100}
-                    required
-                  />
+                <div className="sqb-review" aria-label="Booking review">
+                  <p className="sqb-review-title">Your appointment</p>
+                  <dl className="sqb-review-list">
+                    <div>
+                      <dt>Service</dt>
+                      <dd>{selectedService?.name}</dd>
+                    </div>
+                    <div>
+                      <dt>Date &amp; time</dt>
+                      <dd>
+                        {date ? formatDateLabel(date) : "\u2014"} at {selectedSlot?.label || "\u2014"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Price</dt>
+                      <dd>{selectedService?.price || "\u2014"}</dd>
+                    </div>
+                  </dl>
                 </div>
-                <div className="sqb-field">
-                  <label htmlFor="sqb-last-name">Last name</label>
-                  <input
-                    id="sqb-last-name"
-                    name="lastName"
-                    type="text"
-                    autoComplete="family-name"
-                    value={contact.lastName}
-                    onChange={(e) => updateContact("lastName", e.target.value)}
-                    maxLength={100}
-                    required
-                  />
-                </div>
-                <div className="sqb-field">
-                  <label htmlFor="sqb-email">Email</label>
-                  <input
-                    id="sqb-email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    inputMode="email"
-                    value={contact.email}
-                    onChange={(e) => updateContact("email", e.target.value)}
-                    maxLength={254}
-                    required
-                  />
-                </div>
-                <div className="sqb-field">
-                  <label htmlFor="sqb-phone">Phone</label>
-                  <input
-                    id="sqb-phone"
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    inputMode="tel"
-                    placeholder="(555) 555-0100"
-                    value={contact.phone}
-                    onChange={(e) => updateContact("phone", e.target.value)}
-                    maxLength={20}
-                    required
-                  />
-                </div>
+
+                <fieldset className="sqb-fields">
+                  <legend>Contact details</legend>
+                  <div className="sqb-field">
+                    <label htmlFor="sqb-first-name">First name</label>
+                    <input
+                      id="sqb-first-name"
+                      name="firstName"
+                      type="text"
+                      autoComplete="given-name"
+                      value={contact.firstName}
+                      onChange={(e) => updateContact("firstName", e.target.value)}
+                      maxLength={100}
+                      required
+                    />
+                  </div>
+                  <div className="sqb-field">
+                    <label htmlFor="sqb-last-name">Last name</label>
+                    <input
+                      id="sqb-last-name"
+                      name="lastName"
+                      type="text"
+                      autoComplete="family-name"
+                      value={contact.lastName}
+                      onChange={(e) => updateContact("lastName", e.target.value)}
+                      maxLength={100}
+                      required
+                    />
+                  </div>
+                  <div className="sqb-field">
+                    <label htmlFor="sqb-email">Email</label>
+                    <input
+                      id="sqb-email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      inputMode="email"
+                      value={contact.email}
+                      onChange={(e) => updateContact("email", e.target.value)}
+                      maxLength={254}
+                      required
+                    />
+                  </div>
+                  <div className="sqb-field">
+                    <label htmlFor="sqb-phone">Phone</label>
+                    <input
+                      id="sqb-phone"
+                      name="phone"
+                      type="tel"
+                      autoComplete="tel"
+                      inputMode="tel"
+                      placeholder="(555) 555-0100"
+                      value={contact.phone}
+                      onChange={(e) => updateContact("phone", e.target.value)}
+                      maxLength={20}
+                      required
+                    />
+                  </div>
+                </fieldset>
 
                 <p className="sqb-privacy-note">
                   Please do not include medical or sensitive health information. Chelsea will
                   discuss intake details with you directly.
                 </p>
 
-                {bookingError && <p className="sqb-message sqb-error">{bookingError}</p>}
-
-                <div className="sqb-actions">
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={() => goTo("time")}
-                    disabled={submitting}
-                  >
-                    &larr; Back
-                  </button>
-                  <button type="submit" className="button primary" disabled={submitting}>
-                    {submitting ? "Creating appointment\u2026" : "Create appointment"}
-                  </button>
-                </div>
+                {bookingError && <p className="sqb-message sqb-error" role="alert">{bookingError}</p>}
               </form>
             )}
 
             {step === "confirm" && bookingResult && (
-              <div>
-                <div className="sqb-confirm">
-                  <dl className="sqb-confirm-list">
+              <div className="sqb-confirm">
+                <span className="sqb-confirm-icon" aria-hidden="true">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <path d="M22 4L12 14.01l-3-3" />
+                  </svg>
+                </span>
+                <h3 className="sqb-confirm-title">Your test appointment is booked</h3>
+                <dl className="sqb-confirm-list">
+                  <div>
+                    <dt>Service</dt>
+                    <dd>{selectedService?.name}</dd>
+                  </div>
+                  <div>
+                    <dt>Date &amp; time</dt>
+                    <dd>
+                      {formatDateLabel(date)} at {selectedSlot?.label}
+                    </dd>
+                  </div>
+                  {bookingResult.bookingId && (
                     <div>
-                      <dt>Service</dt>
-                      <dd>{selectedService?.name}</dd>
+                      <dt>Booking reference</dt>
+                      <dd>{bookingResult.bookingId}</dd>
                     </div>
-                    <div>
-                      <dt>Date</dt>
-                      <dd>{formatDateLabel(date)}</dd>
-                    </div>
-                    <div>
-                      <dt>Time</dt>
-                      <dd>{selectedSlot?.label}</dd>
-                    </div>
-                    <div>
-                      <dt>Client</dt>
-                      <dd>{bookingResult.customerName}</dd>
-                    </div>
-                    <div>
-                      <dt>Square status</dt>
-                      <dd>{bookingResult.status}</dd>
-                    </div>
-                  </dl>
-                  <p className="sqb-confirm-note">
-                    Your appointment was created in Square. No payment or confirmation email was sent.
-                  </p>
-                </div>
-                <div className="sqb-actions">
-                  <button type="button" className="button secondary" onClick={startOver}>
-                    Book another appointment
+                  )}
+                </dl>
+                <p className="sqb-confirm-note">
+                  This is a Square Sandbox appointment for testing. No real booking was created and no
+                  confirmation email was sent.
+                </p>
+                <div className="sqb-confirm-actions">
+                  <button type="button" className="button ghost sqb-book-another" onClick={startOver}>
+                    Book another test appointment
                   </button>
                 </div>
               </div>
@@ -551,23 +641,43 @@ export default function SquareBooking() {
           </div>
         </div>
 
-        {canShowSummary && (
+        {step !== "confirm" && (
           <aside className="sqb-summary" aria-label="Appointment summary">
-            <h4>Your appointment</h4>
-            <dl className="sqb-summary-list">
-              <div>
-                <dt>Service</dt>
-                <dd>{selectedService?.name || "\u2014"}</dd>
-              </div>
-              <div>
-                <dt>Date</dt>
-                <dd>{date ? formatDateLabel(date) : "\u2014"}</dd>
-              </div>
-              <div>
-                <dt>Time</dt>
-                <dd>{selectedSlot?.label || "\u2014"}</dd>
-              </div>
-            </dl>
+            <h4 className="sqb-summary-title">Your appointment</h4>
+
+            {!selectedService ? (
+              <p className="sqb-summary-empty">
+                Choose a session to see your appointment details here.
+              </p>
+            ) : (
+              <dl className="sqb-summary-list">
+                {summaryRows.map((row) => (
+                  <div key={row.key} className={row.value ? "" : " is-empty"}>
+                    <dt>{row.label}</dt>
+                    <dd>
+                      {row.value || "\u2014"}
+                      {row.sub && row.value ? <span className="sqb-summary-sub"> {row.sub}</span> : null}
+                    </dd>
+                  </div>
+                ))}
+                {contactName && (
+                  <div>
+                    <dt>Client</dt>
+                    <dd>{contactName}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+
+            <button
+              type={step === "contact" ? "submit" : "button"}
+              className="button primary sqb-primary"
+              form={step === "contact" ? "sqb-form" : undefined}
+              disabled={primaryDisabled}
+              onClick={step === "contact" ? undefined : handlePrimary}
+            >
+              {primaryLabel}
+            </button>
           </aside>
         )}
       </div>
