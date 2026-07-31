@@ -2,9 +2,9 @@ node_modules
 dist
 KAI_LANI_BOOKING_REDESIGN.md
 .DS_Store
-.env
-.env.local
 .vercel
+.env*
+!.env.example
 square-sandbox-service-ids.json
 npm-debug.log*
 yarn-debug.log*
