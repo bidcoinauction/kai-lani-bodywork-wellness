@@ -1,10 +1,8 @@
 const REVIEWS = [
   { name: "Lisa L.", text: "Chelsea is great!" },
-  { name: "Jessica B.", text: "I\u2019ve been going to Chelsea for a few years now, and she\u2019s always great!" },
+  { name: "Jessica B.", text: "I've been going to Chelsea for a few years now, and she's always great!" },
   { name: "Anonymous", text: "Chelsea is amazing, you will love her." },
 ];
-
-const REVIEWS_URL = "https://www.massagebook.com/therapists/kai-lani-bodywork-wellness/reviews?src=external";
 
 export default function Reviews() {
   return (
@@ -24,16 +22,10 @@ export default function Reviews() {
       </div>
 
       <div className="reviews-footer" data-reveal>
-        <a
-          className="reviews-leave-link"
-          href={REVIEWS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Leave a review \u2014 opens in a new tab"
-        >
-          Leave a review
-          <span className="external-icon" aria-hidden="true"> &#8599;</span>
-        </a>
+        <span>5.0 average rating</span>
+        <span>Based on 22 client reviews</span>
+        <span>Ambiance 99%</span>
+        <span>Professionalism 100%</span>
       </div>
     </section>
   );
