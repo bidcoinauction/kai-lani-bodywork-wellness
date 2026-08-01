@@ -8,6 +8,7 @@ import {
   startOfDayInTimeZone,
   addMinutes,
 } from "../../lib/time.js";
+import { sendBookingNotifications } from "../../lib/email.js";
 
 export const MAX_DAYS_AHEAD = 13;
 
@@ -43,7 +44,8 @@ function isRateLimited(key) {
  * original result instead of a conflict. Like the rate limiter above, this
  * state is process-local: it does not survive Vercel cold starts and is not
  * shared across function instances. A durable, distributed idempotency store
- * is an explicit Production launch requirement.
+ * and durable notification storage are explicit Production launch requirements.
+ * Resend provider idempotency currently lasts 24 hours.
  */
 const IDEMPOTENCY_CACHE_MAX = 1000;
 const idempotencyCache = new Map();
@@ -344,8 +346,23 @@ async function createBookingFlow({
     startAt: booking.startAt || start.toISOString(),
     serviceName: config.service.name,
     duration: String(config.service.durationMinutes),
+    price: String(config.service.price),
     customerName: `${firstName} ${lastName}`,
   };
+
+  try {
+    safeResponse.notification = await sendBookingNotifications({
+      ...safeResponse,
+      firstName,
+      lastName,
+      email,
+      phone,
+      price: config.service.price,
+    });
+  } catch {
+    console.info(`Email notification type=all bookingSuffix=${booking.id.slice(-6)} status=failed`);
+    safeResponse.notification = { client: "failed", provider: "failed" };
+  }
 
   recordIdempotentResult(idempotencyKey, signature, safeResponse);
   return safeResponse;

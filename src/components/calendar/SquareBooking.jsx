@@ -485,6 +485,20 @@ export default function SquareBooking() {
         ? formatDateShort(date)
         : "Select a day and time";
 
+  const confirmationEmailNote = (() => {
+    const clientStatus = bookingResult?.notification?.client;
+    if (clientStatus === "sent") return "Test confirmation sent to the Sandbox inbox.";
+    if (clientStatus === "failed") {
+      return "Your test appointment was created, but the confirmation email could not be sent. Save your booking reference.";
+    }
+    if (clientStatus === "disabled") {
+      return "This appointment was created in Square Sandbox. Email delivery is not enabled.";
+    }
+    return IS_SANDBOX
+      ? "This is a Square Sandbox appointment for testing. No real booking was created."
+      : "Your appointment was created.";
+  })();
+
   return (
     <div className="sqb-shell">
       <header className="sqb-shell-header">
@@ -807,9 +821,7 @@ export default function SquareBooking() {
                   )}
                 </dl>
                 <p className="sqb-confirm-note">
-                  {IS_SANDBOX
-                    ? "This is a Square Sandbox appointment for testing. No real booking was created and no confirmation email was sent."
-                    : "A confirmation email has been sent with the details of your appointment."}
+                  {confirmationEmailNote}
                 </p>
                 <div className="sqb-confirm-actions">
                   <button type="button" className="button ghost sqb-book-another" onClick={startOver}>

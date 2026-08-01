@@ -19,15 +19,44 @@ import {
   setSquareClientForTests,
 } from "./helpers.js";
 
+function clearEmailEnv() {
+  for (const key of [
+    "EMAIL_ENABLED",
+    "EMAIL_MODE",
+    "RESEND_API_KEY",
+    "EMAIL_FROM",
+    "EMAIL_SANDBOX_RECIPIENT",
+    "CHELSEA_NOTIFICATION_EMAIL",
+    "EMAIL_REPLY_TO",
+    "PUBLIC_SITE_URL",
+  ]) {
+    delete process.env[key];
+  }
+}
+
+function installEmailEnv() {
+  process.env.EMAIL_ENABLED = "true";
+  process.env.EMAIL_MODE = "sandbox";
+  process.env.RESEND_API_KEY = "test_resend_key";
+  process.env.EMAIL_FROM = "Kai Lani Sandbox <onboarding@resend.dev>";
+  process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@example.invalid";
+  process.env.EMAIL_REPLY_TO = "reply@example.invalid";
+}
+
 beforeEach(() => {
   resetSquareClientForTests();
   resetIdempotencyCacheForTests();
+  clearEmailEnv();
+  delete globalThis.fetch;
 });
 
 afterEach(() => {
   clearSquareEnv();
+  clearEmailEnv();
   resetSquareClientForTests();
   resetIdempotencyCacheForTests();
+  delete globalThis.fetch;
 });
 
 let requestCounter = 0;
@@ -281,6 +310,8 @@ test("creates a booking and returns only the safe confirmation shape", async () 
     "bookingId",
     "customerName",
     "duration",
+    "notification",
+    "price",
     "serviceName",
     "startAt",
     "status",
@@ -289,7 +320,9 @@ test("creates a booking and returns only the safe confirmation shape", async () 
   assert.equal(res.body.status, "ACCEPTED");
   assert.equal(res.body.serviceName, "60 Min Customized Massage");
   assert.equal(res.body.duration, "60");
+  assert.equal(res.body.price, "93");
   assert.equal(res.body.customerName, "Test Client");
+  assert.deepEqual(res.body.notification, { client: "disabled", provider: "disabled" });
   assert.equal(createLog.length, 1);
   assert.equal(createLog[0].idempotencyKey, "idem-test-0001");
   assert.equal(createLog[0].booking.appointmentSegments[0].serviceVariationId, "VAR_CUSTOMIZED_60");
@@ -402,6 +435,28 @@ test("idempotent retry returns the original safe response without a second booki
   assert.equal(log.searchAvailability, 1, "availability recheck must not run on replay");
 });
 
+test("identical booking retry sends no duplicate email messages", async () => {
+  installFullConfig();
+  installEmailEnv();
+  const log = { searchAvailability: 0, create: 0, customerSearch: 0, customerCreate: 0 };
+  const mock = makeIdempotencyMock(log);
+  const emailCalls = [];
+  globalThis.fetch = async (url, options) => {
+    emailCalls.push({ url, options });
+    return { ok: true };
+  };
+
+  const first = await withSquareMock(mock, () => run(VALID_BODY, {}));
+  const second = await withSquareMock(mock, () => run(VALID_BODY, {}));
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(second.statusCode, 201);
+  assert.deepEqual(second.body, first.body);
+  assert.deepEqual(first.body.notification, { client: "sent", provider: "sent" });
+  assert.equal(emailCalls.length, 2, "client and provider email should each send once");
+  assert.equal(log.create, 1);
+});
+
 test("rejects reusing the same idempotency key with a different payload", async () => {
   installFullConfig();
   const log = { searchAvailability: 0, create: 0, customerSearch: 0, customerCreate: 0 };
@@ -511,6 +566,53 @@ test("normalizes Square errors without leaking raw details", async () => {
     assert.equal(typeof res.body.error, "string");
     assert.doesNotMatch(JSON.stringify(res.body), /SECRET|raw network/i);
   }
+});
+
+test("booking failure sends no email", async () => {
+  installFullConfig();
+  installEmailEnv();
+  let emailCalls = 0;
+  globalThis.fetch = async () => {
+    emailCalls += 1;
+    return { ok: true };
+  };
+  const res = await withSquareMock(
+    {
+      bookings: {
+        searchAvailability: async (request) => ({
+          availabilities: [
+            {
+              startAt: request.query.filter.startAtRange.startAt,
+              appointmentSegments: [{ serviceVariationVersion: 1785474196673n }],
+            },
+          ],
+        }),
+        create: async () => {
+          throw { statusCode: 500, body: { errors: [{ detail: "fail" }] } };
+        },
+      },
+      customers: {
+        search: async () => ({ customers: [] }),
+        create: async () => ({ customer: { id: "CUST_NEW" } }),
+      },
+    },
+    () => run(VALID_BODY, {}),
+  );
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(emailCalls, 0);
+});
+
+test("email failure does not change booking success or leak recipients", async () => {
+  installFullConfig();
+  installEmailEnv();
+  globalThis.fetch = async () => ({ ok: false });
+  const res = await withSquareMock(makeEchoAvailabilityMock([]), () => run(VALID_BODY, {}));
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.bookingId, "BK_123");
+  assert.deepEqual(res.body.notification, { client: "failed", provider: "failed" });
+  assert.doesNotMatch(JSON.stringify(res.body), /sandbox@example\.invalid|reply@example\.invalid|test_resend_key/);
 });
 
 test("returns 413 for an oversized request body", async () => {
