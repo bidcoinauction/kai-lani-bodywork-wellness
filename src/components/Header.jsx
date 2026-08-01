@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { logoSrc } from "../data.js";
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,8 +13,10 @@ export default function Header() {
   return (
     <header className="site-header" data-header>
       <a className="brand-mark" href="#main-content" aria-label="Kai Lani home" onClick={closeNav}>
-        <img src={logoSrc} alt="" />
-        <span>Kai Lani</span>
+        <span className="brand-wordmark">
+          <span className="brand-name">Kai Lani</span>
+          <span className="brand-sub">Bodywork &amp; Wellness</span>
+        </span>
       </a>
       <button
         className="nav-toggle"

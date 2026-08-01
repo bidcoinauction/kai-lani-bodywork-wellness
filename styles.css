@@ -92,7 +92,7 @@ textarea {
   min-height: 72px;
   padding: 14px clamp(18px, 4vw, 52px);
   color: var(--cream);
-  background: rgba(10, 31, 36, 0.76);
+  background: rgba(10, 31, 36, 0.92);
   border-bottom: 1px solid rgba(247, 240, 228, 0.14);
   backdrop-filter: blur(18px);
   transition: background 220ms ease, border-color 220ms ease;
@@ -102,7 +102,6 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-weight: 700;
   transition: transform 220ms var(--ease), opacity 220ms ease;
 }
 
@@ -110,18 +109,25 @@ textarea {
   transform: translateY(-1px);
 }
 
-.brand-mark img {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid rgba(222, 199, 159, 0.4);
-  transition: transform 420ms var(--ease), border-color 220ms ease;
+.brand-wordmark {
+  display: grid;
+  gap: 1px;
+  line-height: 1.12;
 }
 
-.brand-mark:hover img {
-  transform: rotate(-4deg) scale(1.04);
-  border-color: rgba(217, 184, 111, 0.7);
+.brand-name {
+  font-size: 1.18rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--cream);
+}
+
+.brand-sub {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(247, 240, 228, 0.6);
 }
 
 .site-nav {
@@ -1195,11 +1201,8 @@ h3 {
 }
 
 @media (max-width: 620px) {
-  .brand-mark span {
-    max-width: 116px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .brand-name {
+    font-size: 1.12rem;
   }
 
   .hero-actions {
@@ -1279,4 +1282,7 @@ h3 {
 }
 
 @media (max-width: 480px) {
+  .brand-sub {
+    display: none;
+  }
 }

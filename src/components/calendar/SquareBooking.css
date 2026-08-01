@@ -169,10 +169,6 @@
   gap: 12px;
 }
 
-.sqb-shell-header {
-  scroll-margin-top: 88px;
-}
-
 .sqb-mobile-only {
   display: none;
 }
@@ -784,8 +780,8 @@
 .sqb-confirm {
   display: grid;
   justify-items: center;
-  gap: 14px;
-  padding: clamp(22px, 4vw, 34px) clamp(18px, 4vw, 28px);
+  gap: 16px;
+  padding: clamp(22px, 3.5vw, 30px);
   text-align: center;
 }
 
@@ -793,28 +789,44 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: var(--leaf);
-  color: var(--cream);
+  border: 1px solid rgba(0, 109, 91, 0.18);
+  background: rgba(0, 109, 91, 0.12);
+  color: var(--leaf);
 }
 
 .sqb-confirm-title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 800;
   color: var(--ink);
+}
+
+.sqb-confirm-title:focus {
+  outline: none;
 }
 
 .sqb-confirm-list {
   text-align: left;
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
   padding: 16px 18px;
   border-radius: var(--radius);
   background: var(--cream);
   border: 1px solid rgba(217, 184, 111, 0.4);
+}
+
+.sqb-confirm-list dd {
+  overflow-wrap: anywhere;
+}
+
+.sqb-confirm-actions {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  max-width: 480px;
 }
 
 .sqb-confirm-note {
@@ -851,6 +863,17 @@
     position: sticky;
     top: 20px;
   }
+}
+
+/* Confirmation layout — spans the full grid, centered */
+.sqb-layout-confirm {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.sqb-layout-confirm .sqb-main {
+  width: 100%;
+  max-width: 720px;
 }
 
 /* Mobile */
@@ -1072,6 +1095,14 @@
   .sqb-confirm {
     padding: 8px 4px 4px;
     gap: 12px;
+  }
+
+  .sqb-confirm-list {
+    padding: 12px 14px;
+  }
+
+  .sqb-confirm-actions {
+    margin-top: 2px;
   }
 }
 

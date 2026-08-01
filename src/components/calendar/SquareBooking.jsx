@@ -10,6 +10,8 @@ import "./SquareBooking.css";
  * production booking. This component never imports the Square server client.
  */
 
+const IS_SANDBOX = import.meta.env.VITE_ENABLE_SQUARE_SANDBOX === "true";
+
 const BOOKING_TIMEZONE = "America/New_York";
 const BOOKING_WINDOW_DAYS = 14;
 
@@ -121,12 +123,27 @@ function makeIdempotencyKey() {
   return `kl-${rand()}${rand()}`;
 }
 
+const NANP_TEN_DIGITS = /^[2-9]\d{2}[2-9]\d{2}\d{4}$/;
+
+function isValidPhone(value) {
+  const cleaned = value.replace(/[\s().-]/g, "");
+  if (!/^\+?\d{10,15}$/.test(cleaned)) return false;
+  if (cleaned.startsWith("+")) {
+    if (cleaned.startsWith("+1")) return NANP_TEN_DIGITS.test(cleaned.slice(2));
+    return true;
+  }
+  if (cleaned.length === 10) return NANP_TEN_DIGITS.test(cleaned);
+  if (cleaned.length === 11 && cleaned.startsWith("1")) {
+    return NANP_TEN_DIGITS.test(cleaned.slice(1));
+  }
+  return false;
+}
+
 const STEP_META = {
   service: { label: "Service", heading: "Choose your session." },
   date: { label: "Date", heading: "Pick a day." },
   time: { label: "Time", heading: "Pick a time." },
   contact: { label: "Details", heading: "Your details." },
-  confirm: { label: "Confirmation", heading: "You\u2019re booked." },
 };
 
 const STEP_ORDER = ["service", "date", "time", "contact", "confirm"];
@@ -146,7 +163,7 @@ export default function SquareBooking() {
   const [statusMessage, setStatusMessage] = useState("");
 
   const idempotencyRef = useRef(null);
-  const shellTopRef = useRef(null);
+  const layoutRef = useRef(null);
   const serviceTrackRef = useRef(null);
   const [serviceIndex, setServiceIndex] = useState(0);
   const serviceScrollGuardRef = useRef(false);
@@ -163,14 +180,45 @@ export default function SquareBooking() {
   function goTo(nextStep) {
     setStep(nextStep);
     requestAnimationFrame(() => {
-      const heading = headingRefs[nextStep]?.current;
-      if (typeof window !== "undefined" && window.matchMedia("(max-width: 620px)").matches) {
-        shellTopRef.current?.scrollIntoView({ block: "start" });
-        heading?.focus({ preventScroll: true });
-      } else {
-        heading?.focus();
-      }
+      positionStep();
+      headingRefs[nextStep]?.current?.focus({ preventScroll: true });
     });
+  }
+
+  function positionStep() {
+    const layout = layoutRef.current;
+    if (!layout || typeof window === "undefined") return;
+    const headerEl = document.querySelector(".site-header");
+    const headerH = headerEl ? headerEl.getBoundingClientRect().height : 0;
+    const actionBarEl = document.querySelector(".sqb-mobile-action");
+    const actionBarH =
+      actionBarEl && getComputedStyle(actionBarEl).display !== "none"
+        ? actionBarEl.getBoundingClientRect().height
+        : 0;
+    const innerH = window.innerHeight;
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - innerH);
+    const isMobile = window.matchMedia("(max-width: 620px)").matches;
+    const rect = layout.getBoundingClientRect();
+    const layoutDocTop = rect.top + window.scrollY;
+    const layoutH = rect.height;
+    const gap = 12;
+    const usableH = innerH - headerH - actionBarH;
+
+    const comfortablyVisible =
+      rect.top >= headerH + gap && rect.bottom <= innerH - actionBarH - gap;
+
+    if (!isMobile && comfortablyVisible) return;
+
+    let target;
+    if (layoutH <= usableH) {
+      target = layoutDocTop - headerH - (usableH - layoutH) / 2;
+    } else {
+      target = layoutDocTop - headerH - gap;
+    }
+    target = Math.max(0, Math.min(target, maxScroll));
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: target, behavior: reduceMotion ? "auto" : "smooth" });
   }
 
   const selectedService = SQUARE_SERVICES.find((s) => s.key === serviceKey) || null;
@@ -266,7 +314,7 @@ export default function SquareBooking() {
       setBookingError("Please enter a valid email address.");
       return;
     }
-    if (!/^\+?[\d\s().-]{10,16}$/.test(trimmed.phone)) {
+    if (!isValidPhone(trimmed.phone)) {
       setBookingError("Please enter a valid phone number.");
       return;
     }
@@ -307,8 +355,23 @@ export default function SquareBooking() {
     }
   }
 
+  useEffect(() => {
+    if (!bookingError) return;
+    const id = requestAnimationFrame(() => {
+      const el = layoutRef.current?.querySelector(".sqb-message.sqb-error");
+      if (!el) return;
+      const actionBar = document.querySelector(".sqb-mobile-action");
+      const barH = actionBar ? actionBar.getBoundingClientRect().height : 0;
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const docBottom = el.getBoundingClientRect().bottom + window.scrollY;
+      const target = Math.max(0, Math.min(docBottom - (window.innerHeight - barH) + 16, maxScroll));
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: target, behavior: reduceMotion ? "auto" : "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [bookingError]);
+
   const dateOptions = getDateOptions();
-  const activeStep = STEP_META[step];
 
   const primaryDisabled =
     step === "service" ? !serviceKey
@@ -424,7 +487,7 @@ export default function SquareBooking() {
 
   return (
     <div className="sqb-shell">
-      <header className="sqb-shell-header" ref={shellTopRef}>
+      <header className="sqb-shell-header">
         <div className="sqb-shell-topline">
           <p className="sqb-eyebrow">Online booking</p>
           <p className="sqb-step-count" aria-hidden="true">
@@ -475,7 +538,7 @@ export default function SquareBooking() {
         })}
       </ol>
 
-      <div className="sqb-layout">
+      <div className={`sqb-layout${step === "confirm" ? " sqb-layout-confirm" : ""}`} ref={layoutRef}>
         <div className="sqb-main">
           <div key={step} className="sqb-panel sqb-step-anim">
             {step !== "service" && step !== "confirm" && (
@@ -488,9 +551,11 @@ export default function SquareBooking() {
               </button>
             )}
 
-            <h3 className="sqb-heading" tabIndex={-1} ref={headingRefs[step]}>
-              {activeStep.heading}
-            </h3>
+            {step !== "confirm" && (
+              <h3 className="sqb-heading" tabIndex={-1} ref={headingRefs[step]}>
+                {STEP_META[step].heading}
+              </h3>
+            )}
 
             {step === "service" && (
               <>
@@ -720,7 +785,9 @@ export default function SquareBooking() {
                     <path d="M22 4L12 14.01l-3-3" />
                   </svg>
                 </span>
-                <h3 className="sqb-confirm-title">Your test appointment is booked</h3>
+                <h3 className="sqb-confirm-title" tabIndex={-1} ref={headingRefs.confirm}>
+                  {IS_SANDBOX ? "Your test appointment is booked" : "Your appointment is booked"}
+                </h3>
                 <dl className="sqb-confirm-list">
                   <div>
                     <dt>Service</dt>
@@ -740,12 +807,13 @@ export default function SquareBooking() {
                   )}
                 </dl>
                 <p className="sqb-confirm-note">
-                  This is a Square Sandbox appointment for testing. No real booking was created and no
-                  confirmation email was sent.
+                  {IS_SANDBOX
+                    ? "This is a Square Sandbox appointment for testing. No real booking was created and no confirmation email was sent."
+                    : "A confirmation email has been sent with the details of your appointment."}
                 </p>
                 <div className="sqb-confirm-actions">
                   <button type="button" className="button ghost sqb-book-another" onClick={startOver}>
-                    Book another test appointment
+                    {IS_SANDBOX ? "Book another test appointment" : "Book another appointment"}
                   </button>
                 </div>
               </div>

@@ -35,6 +35,49 @@ function isRateLimited(key) {
   return false;
 }
 
+/**
+ * SANDBOX-ONLY in-memory idempotency cache.
+ *
+ * Records the safe response for a successful create keyed by the normalized
+ * idempotency key so a client retry after a lost response is answered with the
+ * original result instead of a conflict. Like the rate limiter above, this
+ * state is process-local: it does not survive Vercel cold starts and is not
+ * shared across function instances. A durable, distributed idempotency store
+ * is an explicit Production launch requirement.
+ */
+const IDEMPOTENCY_CACHE_MAX = 1000;
+const idempotencyCache = new Map();
+
+// Requests still in flight for a given idempotency key, used to deduplicate
+// concurrent identical submissions within this instance so a duplicate request
+// never races a second customer or booking. Same Sandbox-only, not-durable
+// caveat as the cache above.
+const idempotencyInFlight = new Map();
+
+const IDEMPOTENCY_CONFLICT_MESSAGE =
+  "This idempotency key was already used for a different booking request.";
+
+function payloadSignature({ serviceKey, firstName, lastName, email, phone, startMs }) {
+  return [serviceKey, firstName, lastName, email, phone, String(startMs)].join("\u0001");
+}
+
+function recordIdempotentResult(idempotencyKey, signature, response) {
+  idempotencyCache.set(idempotencyKey, { signature, response });
+  if (idempotencyCache.size > IDEMPOTENCY_CACHE_MAX) {
+    const oldest = idempotencyCache.keys().next().value;
+    if (oldest !== undefined) idempotencyCache.delete(oldest);
+  }
+}
+
+/**
+ * Test-only seam. Clears the in-memory idempotency state between tests.
+ * Must never be called from production code.
+ */
+export function resetIdempotencyCacheForTests() {
+  idempotencyCache.clear();
+  idempotencyInFlight.clear();
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._-]+$/;
 
@@ -58,13 +101,26 @@ function normalizeEmail(value) {
   return cleaned;
 }
 
+function isValidNanpNumber(digits) {
+  return /^[2-9]\d{2}[2-9]\d{2}\d{4}$/.test(digits);
+}
+
 function normalizePhone(value) {
   if (!isString(value)) return null;
   const cleaned = value.replace(/[\s().-]/g, "");
   if (!/^\+?\d{10,15}$/.test(cleaned)) return null;
-  if (cleaned.startsWith("+")) return cleaned;
-  if (cleaned.length === 10) return `+1${cleaned}`;
-  if (cleaned.length === 11 && cleaned.startsWith("1")) return `+${cleaned}`;
+  if (cleaned.startsWith("+")) {
+    if (cleaned.startsWith("+1")) {
+      return isValidNanpNumber(cleaned.slice(2)) ? cleaned : null;
+    }
+    return cleaned;
+  }
+  if (cleaned.length === 10) {
+    return isValidNanpNumber(cleaned) ? `+1${cleaned}` : null;
+  }
+  if (cleaned.length === 11 && cleaned.startsWith("1")) {
+    return isValidNanpNumber(cleaned.slice(1)) ? `+${cleaned}` : null;
+  }
   return null;
 }
 
@@ -150,96 +206,166 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: startError });
   }
 
-  let config;
-  try {
-    config = requireBookingConfig(serviceKey);
-  } catch (error) {
-    if (error instanceof ConfigError) {
-      return res.status(500).json({ error: error.message });
+  const signature = payloadSignature({
+    serviceKey,
+    firstName,
+    lastName,
+    email,
+    phone,
+    startMs: start.getTime(),
+  });
+
+  // Idempotent replay of an already-completed request: answer from the
+  // original safe response before any availability or Square work, so a retry
+  // never re-creates a customer or booking and never reports a false conflict.
+  const cached = idempotencyCache.get(idempotencyKey);
+  if (cached) {
+    if (cached.signature === signature) {
+      return res.status(201).json(cached.response);
     }
-    throw error;
+    return res.status(409).json({ error: IDEMPOTENCY_CONFLICT_MESSAGE });
   }
 
+  // Concurrent identical submissions within this instance share one create.
+  const inflight = idempotencyInFlight.get(idempotencyKey);
+  if (inflight) {
+    if (inflight.signature !== signature) {
+      return res.status(409).json({ error: IDEMPOTENCY_CONFLICT_MESSAGE });
+    }
+    try {
+      const safeResponse = await inflight.promise;
+      return res.status(201).json(safeResponse);
+    } catch (error) {
+      return sendSafeError(res, error);
+    }
+  }
+
+  const flow = createBookingFlow({
+    serviceKey,
+    firstName,
+    lastName,
+    email,
+    phone,
+    idempotencyKey,
+    signature,
+    start,
+  });
+  idempotencyInFlight.set(idempotencyKey, { signature, promise: flow });
   try {
-    const client = getSquareClient();
+    const safeResponse = await flow;
+    return res.status(201).json(safeResponse);
+  } catch (error) {
+    return sendSafeError(res, error);
+  } finally {
+    idempotencyInFlight.delete(idempotencyKey);
+  }
+}
 
-    const recheckResponse = await client.bookings.searchAvailability({
-      query: {
-        filter: {
-          startAtRange: {
-            startAt: start.toISOString(),
-            endAt: addMinutes(start, config.service.durationMinutes).toISOString(),
-          },
-          locationId: config.locationId,
-          segmentFilters: [
-            {
-              serviceVariationId: config.service.serviceVariationId,
-              teamMemberIdFilter: { any: [config.teamMemberId] },
-            },
-          ],
+async function createBookingFlow({
+  serviceKey,
+  firstName,
+  lastName,
+  email,
+  phone,
+  idempotencyKey,
+  signature,
+  start,
+}) {
+  const config = requireBookingConfig(serviceKey);
+  const client = getSquareClient();
+
+  const recheckResponse = await client.bookings.searchAvailability({
+    query: {
+      filter: {
+        startAtRange: {
+          startAt: start.toISOString(),
+          endAt: addMinutes(start, config.service.durationMinutes).toISOString(),
         },
-      },
-    });
-
-    const matched = (recheckResponse.availabilities || []).find(
-      (availability) =>
-        availability.startAt && new Date(availability.startAt).getTime() === start.getTime(),
-    );
-
-    if (!matched) {
-      return res.status(409).json({ error: "That time is no longer available. Please pick another." });
-    }
-
-    const serviceVariationVersion = matched.appointmentSegments?.[0]?.serviceVariationVersion;
-    if (
-      typeof serviceVariationVersion !== "bigint" &&
-      typeof serviceVariationVersion !== "number"
-    ) {
-      throw new Error("service_variation_version_missing");
-    }
-
-    const customerId = await findOrCreateCustomer(client, {
-      firstName,
-      lastName,
-      email,
-      phone,
-    });
-
-    const response = await client.bookings.create({
-      idempotencyKey,
-      booking: {
-        startAt: start.toISOString(),
         locationId: config.locationId,
-        customerId,
-        appointmentSegments: [
+        segmentFilters: [
           {
-            durationMinutes: config.service.durationMinutes,
             serviceVariationId: config.service.serviceVariationId,
-            teamMemberId: config.teamMemberId,
-            serviceVariationVersion,
+            teamMemberIdFilter: { any: [config.teamMemberId] },
           },
         ],
       },
-    });
+    },
+  });
 
-    const booking = response.booking;
-    if (!booking || !booking.id) {
-      throw new Error("booking_missing");
-    }
+  const matched = (recheckResponse.availabilities || []).find(
+    (availability) =>
+      availability.startAt && new Date(availability.startAt).getTime() === start.getTime(),
+  );
 
-    return res.status(201).json({
-      bookingId: booking.id,
-      status: booking.status || "PENDING",
-      startAt: booking.startAt || start.toISOString(),
-      serviceName: config.service.name,
-      duration: String(config.service.durationMinutes),
-      customerName: `${firstName} ${lastName}`,
-    });
-  } catch (error) {
-    const safeStatus = normalizeBookingError(error);
-    console.error(`Create booking failed status=${safeStatus}`);
-    return res.status(safeStatus).json({ error: clientFacingMessage(safeStatus) });
+  if (!matched) {
+    throw new HttpError(409);
   }
+
+  const serviceVariationVersion = matched.appointmentSegments?.[0]?.serviceVariationVersion;
+  if (
+    typeof serviceVariationVersion !== "bigint" &&
+    typeof serviceVariationVersion !== "number"
+  ) {
+    throw new Error("service_variation_version_missing");
+  }
+
+  const customerId = await findOrCreateCustomer(client, {
+    firstName,
+    lastName,
+    email,
+    phone,
+  });
+
+  const response = await client.bookings.create({
+    idempotencyKey,
+    booking: {
+      startAt: start.toISOString(),
+      locationId: config.locationId,
+      customerId,
+      appointmentSegments: [
+        {
+          durationMinutes: config.service.durationMinutes,
+          serviceVariationId: config.service.serviceVariationId,
+          teamMemberId: config.teamMemberId,
+          serviceVariationVersion,
+        },
+      ],
+    },
+  });
+
+  const booking = response.booking;
+  if (!booking || !booking.id) {
+    throw new Error("booking_missing");
+  }
+
+  const safeResponse = {
+    bookingId: booking.id,
+    status: booking.status || "PENDING",
+    startAt: booking.startAt || start.toISOString(),
+    serviceName: config.service.name,
+    duration: String(config.service.durationMinutes),
+    customerName: `${firstName} ${lastName}`,
+  };
+
+  recordIdempotentResult(idempotencyKey, signature, safeResponse);
+  return safeResponse;
+}
+
+class HttpError extends Error {
+  constructor(statusCode) {
+    super(`http_${statusCode}`);
+    this.name = "HttpError";
+    this.statusCode = statusCode;
+  }
+}
+
+function sendSafeError(res, error) {
+  if (error instanceof ConfigError) {
+    return res.status(500).json({ error: error.message });
+  }
+  const safeStatus = normalizeBookingError(error);
+  console.error(`Create booking failed status=${safeStatus}`);
+  return res.status(safeStatus).json({ error: clientFacingMessage(safeStatus) });
 }
 
 async function findOrCreateCustomer(client, { firstName, lastName, email, phone }) {
