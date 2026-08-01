@@ -179,3 +179,78 @@ test("Resend failure returns safe failed status only", async () => {
   assert.deepEqual(result, { client: "failed", provider: "failed" });
   assert.doesNotMatch(JSON.stringify(result), /SECRET|sandbox@example|test_resend_key/);
 });
+
+test("Resend failure diagnostics log only safe status name and code", async () => {
+  installEmailEnv();
+  const cases = [
+    { status: 401, name: "invalid_api_key", code: "invalid_api_key" },
+    { status: 403, name: "validation_error", code: "invalid_recipient" },
+    { status: 422, name: "validation_error", code: "invalid_from_address" },
+    { status: 429, name: "rate_limit_exceeded", code: "rate_limit_exceeded" },
+    { status: 500, name: "internal_server_error", code: "provider_failure" },
+  ];
+
+  for (const item of cases) {
+    const logs = [];
+    const originalInfo = console.info;
+    console.info = (message) => logs.push(String(message));
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: item.status,
+      json: async () => ({
+        error: {
+          name: item.name,
+          code: item.code,
+          message: "SECRET raw provider detail with sandbox@example.invalid",
+        },
+      }),
+    });
+
+    try {
+      const result = await sendBookingNotifications(BOOKING);
+
+      assert.deepEqual(result, { client: "failed", provider: "failed" });
+      assert.equal(logs.length, 2);
+      for (const log of logs) {
+        assert.match(log, new RegExp(`httpStatus=${item.status}`));
+        assert.match(log, new RegExp(`errorName=${item.name}`));
+        assert.match(log, new RegExp(`errorCode=${item.code}`));
+        assert.match(log, /type=(client-confirmation|provider-notification)/);
+        assert.match(log, /bookingSuffix=123456/);
+        assert.doesNotMatch(log, /SECRET|sandbox@example|customer@example|980555|Ava|Client & Co|test_resend_key/);
+      }
+    } finally {
+      console.info = originalInfo;
+    }
+  }
+});
+
+test("Resend unsafe error names and codes are redacted in logs", async () => {
+  installEmailEnv();
+  const logs = [];
+  const originalInfo = console.info;
+  console.info = (message) => logs.push(String(message));
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 422,
+    json: async () => ({
+      name: "invalid value containing recipient sandbox@example.invalid",
+      code: "bad code with spaces",
+      message: "SECRET raw provider detail",
+    }),
+  });
+
+  try {
+    const result = await sendBookingNotifications(BOOKING);
+
+    assert.deepEqual(result, { client: "failed", provider: "failed" });
+    for (const log of logs) {
+      assert.match(log, /httpStatus=422/);
+      assert.match(log, /errorName=redacted/);
+      assert.match(log, /errorCode=redacted/);
+      assert.doesNotMatch(log, /SECRET|sandbox@example|customer@example|test_resend_key/);
+    }
+  } finally {
+    console.info = originalInfo;
+  }
+});
