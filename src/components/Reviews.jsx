@@ -1,12 +1,28 @@
 const REVIEWS = [
-  { name: "Lisa L.", text: "Chelsea is great!" },
-  { name: "Jessica B.", text: "I\u2019ve been going to Chelsea for a few years now, and she\u2019s always great!" },
-  { name: "Anonymous", text: "Chelsea is amazing, you will love her." },
+  { name: "Jessica B.", text: "I've been going to Chelsea for a few years now, and she's always great!" },
+  { name: "Danielle H.", text: "Chelsea is great at listening to where your problem areas are and focusing on them, helping you get back to feeling much better. I definitely recommend her and can't wait until my next appointment!" },
+  { name: "Kristina C.", text: "I've had quite a few massages before, but nothing compares to the experience I had with Chelsea. She took the time to ask how my body had been feeling and where I was holding tension." },
 ];
 
-const REVIEWS_URL = "https://www.massagebook.com/therapists/kai-lani-bodywork-wellness/reviews?src=external";
+const GOOGLE_REVIEWS_URL = "https://share.google/6BsWblbbdtHP9RrsI";
+
+const ANONYMOUS_NAME_PATTERN = /\b(anonymous|unnamed|guest)\b/i;
+
+function isDisplayableReview(review) {
+  if (!review || typeof review !== "object") return false;
+  const name = typeof review.name === "string" ? review.name.trim() : "";
+  const text = typeof review.text === "string" ? review.text.trim() : "";
+  if (!name || !text) return false;
+  if (ANONYMOUS_NAME_PATTERN.test(name)) return false;
+  if (!/[a-zA-Z]{2,}/.test(name)) return false;
+  return true;
+}
+
+const VISIBLE_REVIEWS = REVIEWS.filter(isDisplayableReview);
 
 export default function Reviews() {
+  const hasTwoCards = VISIBLE_REVIEWS.length === 2;
+
   return (
     <section className="reviews-section" id="reviews">
       <div className="section-heading" data-reveal>
@@ -14,8 +30,8 @@ export default function Reviews() {
         <h2>What clients are saying.</h2>
       </div>
 
-      <div className="reviews-grid" data-reveal>
-        {REVIEWS.map((review, i) => (
+      <div className={hasTwoCards ? "reviews-grid reviews-grid--two" : "reviews-grid"} data-reveal>
+        {VISIBLE_REVIEWS.map((review, i) => (
           <div className="reviews-card" key={i} data-reveal style={{ "--delay": `${i * 90}ms` }}>
             <p className="reviews-card-text">{review.text}</p>
             <p className="reviews-card-name">{review.name}</p>
@@ -24,15 +40,25 @@ export default function Reviews() {
       </div>
 
       <div className="reviews-footer" data-reveal>
+        <span>5.0 average rating</span>
+        <span>Based on 22 client reviews</span>
+        <span>Ambiance 99%</span>
+        <span>Professionalism 100%</span>
+      </div>
+
+      <div className="reviews-google-wrap" data-reveal>
         <a
-          className="reviews-leave-link"
-          href={REVIEWS_URL}
+          className="button reviews-google-link"
+          href={GOOGLE_REVIEWS_URL}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Leave a review \u2014 opens in a new tab"
+          aria-label="Read and leave a review on Google — opens in a new tab"
         >
-          Leave a review
-          <span className="external-icon" aria-hidden="true"> &#8599;</span>
+          Read and leave a review on Google
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="7" y1="17" x2="17" y2="7" />
+            <polyline points="7 7 17 7 17 17" />
+          </svg>
         </a>
       </div>
     </section>
