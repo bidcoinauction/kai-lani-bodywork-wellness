@@ -22,6 +22,7 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 88px;
 }
 
 body {
@@ -200,8 +201,8 @@ body.nav-open .nav-toggle span:last-child {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
   align-items: end;
-  min-height: 92svh;
-  padding: 138px clamp(18px, 5vw, 72px) 54px;
+  min-height: 0;
+  padding: clamp(112px, 10vw, 142px) clamp(18px, 5vw, 72px) clamp(46px, 6vw, 82px);
   color: var(--cream);
   background:
     linear-gradient(110deg, rgba(10, 31, 36, 0.84), rgba(16, 61, 61, 0.46) 52%, rgba(10, 31, 36, 0.88)),
@@ -271,12 +272,12 @@ h2 {
 
 h1 {
   max-width: 720px;
-  font-size: clamp(3.05rem, 8vw, 7.4rem);
+  font-size: clamp(2.85rem, 6.2vw, 5.8rem);
   text-wrap: balance;
 }
 
 h2 {
-  font-size: clamp(2.1rem, 4.6vw, 4.9rem);
+  font-size: clamp(2rem, 3.5vw, 3.8rem);
   text-wrap: balance;
 }
 
@@ -387,8 +388,8 @@ h3 {
 .reviews-section,
 .booking-section,
 .visit-section {
-  scroll-margin-top: 96px;
-  padding: clamp(58px, 9vw, 118px) clamp(18px, 5vw, 72px);
+  scroll-margin-top: 88px;
+  padding: clamp(48px, 7vw, 92px) clamp(18px, 5vw, 72px);
 }
 
 [data-reveal] {
@@ -405,9 +406,9 @@ h3 {
 
 .intro-section {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  gap: clamp(28px, 6vw, 88px);
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  gap: clamp(22px, 4.5vw, 64px);
+  align-items: center;
   background: var(--shell);
 }
 
@@ -416,30 +417,41 @@ h3 {
   font-size: 1.08rem;
 }
 
+.intro-section > div {
+  max-width: 760px;
+}
+
+.intro-section > p {
+  max-width: 520px;
+}
+
 .credentials-section {
+  display: grid;
+  grid-template-columns: minmax(0, 0.64fr) minmax(300px, 0.86fr);
+  align-items: center;
+  gap: clamp(22px, 5vw, 76px);
   background: #ffffff;
   border-top: 1px solid rgba(16, 32, 43, 0.07);
   border-bottom: 0;
-  padding-bottom: clamp(28px, 5vw, 64px);
+  padding-block: clamp(40px, 6vw, 76px);
 }
 
 .credentials-heading {
   display: grid;
-  grid-template-columns: minmax(0, 0.72fr) minmax(320px, 1fr);
-  align-items: end;
-  gap: clamp(24px, 5vw, 76px);
-  margin-bottom: 22px;
+  gap: 10px;
+  margin: 0;
 }
 
 .credentials-heading h2 {
   max-width: 760px;
-  font-size: clamp(1.85rem, 3vw, 3.25rem);
+  font-size: clamp(1.85rem, 3vw, 3rem);
 }
 
 .credential-grid {
   display: grid;
   grid-template-columns: minmax(280px, 560px);
   gap: 14px;
+  justify-content: end;
 }
 
 .credential-card {
@@ -536,7 +548,7 @@ h3 {
 
 .section-heading {
   max-width: 820px;
-  margin-bottom: 34px;
+  margin-bottom: 28px;
 }
 
 .section-heading p {
@@ -551,16 +563,16 @@ h3 {
 .service-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .service-card {
   position: relative;
   overflow: hidden;
-  min-height: 286px;
+  min-height: 232px;
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 22px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 250, 241, 0.82);
@@ -591,7 +603,7 @@ h3 {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 42px;
+  margin-bottom: 28px;
   color: var(--leaf);
   font-weight: 800;
 }
@@ -603,21 +615,25 @@ h3 {
 
 .experience-section {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(300px, 1fr);
-  gap: clamp(26px, 5vw, 80px);
+  grid-template-columns: minmax(0, 0.78fr) minmax(300px, 0.92fr);
+  gap: clamp(24px, 4.5vw, 66px);
   align-items: center;
   background: var(--shell);
+}
+
+.experience-copy {
+  max-width: 680px;
 }
 
 .experience-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .experience-list div {
-  min-height: 126px;
-  padding: 22px;
+  min-height: 108px;
+  padding: 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #ffffff;
@@ -635,7 +651,7 @@ h3 {
   display: block;
   width: 34px;
   height: 4px;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   background: var(--sea);
   transition: width 260ms var(--ease), background 220ms ease;
 }
@@ -658,15 +674,15 @@ h3 {
 .reviews-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .reviews-card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 16px;
-  padding: 24px 26px;
+  gap: 14px;
+  padding: 22px 24px;
   border-radius: var(--radius);
   background: var(--mist);
 }
@@ -690,7 +706,7 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 22px;
 }
 
 .reviews-footer span {
@@ -712,7 +728,7 @@ h3 {
 }
 
 .reviews-google-wrap {
-  margin-top: 22px;
+  margin-top: 18px;
 }
 
 .reviews-google-link {
@@ -973,26 +989,30 @@ h3 {
 }
 
 .gift-cert-link::after {
-  content: "â†—";
+  content: "\2197";
   font-size: 0.85rem;
 }
 
 .visit-section {
   display: grid;
-  gap: 28px;
-  padding: clamp(48px, 7vw, 82px) clamp(18px, 5vw, 72px);
+  gap: 22px;
+  padding: clamp(42px, 6vw, 76px) clamp(18px, 5vw, 72px);
   background: var(--shell);
 }
 
 .visit-section h2 {
-  max-width: 700px;
+  max-width: 1380px;
+}
+
+.visit-section > div:first-child p:last-child {
+  max-width: 620px;
 }
 
 .visit-card {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 28px;
-  padding: 28px;
+  gap: 22px;
+  padding: 24px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #ffffff;
@@ -1002,7 +1022,7 @@ h3 {
 .visit-card-info {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
 }
 
 .visit-card-heading {
@@ -1019,8 +1039,8 @@ h3 {
 }
 
 .visit-card-note {
-  margin: 8px 0 0;
-  padding: 14px 16px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
   border-radius: var(--radius);
   background: rgba(93, 111, 69, 0.08);
   border: 1px solid rgba(93, 111, 69, 0.16);
@@ -1034,7 +1054,7 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin-top: 4px;
 }
 
@@ -1068,7 +1088,7 @@ h3 {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius);
-  min-height: 240px;
+  min-height: 220px;
   background: var(--mist);
 }
 
@@ -1148,7 +1168,30 @@ h3 {
   }
 }
 
+@media (min-width: 901px) and (max-height: 820px) {
+  .hero {
+    padding-top: 112px;
+    padding-bottom: 42px;
+  }
+
+  h1 {
+    font-size: clamp(2.8rem, 5.7vw, 5rem);
+  }
+
+  .hero-copy {
+    margin-top: 16px;
+  }
+
+  .hero-actions {
+    margin-top: 22px;
+  }
+}
+
 @media (max-width: 900px) {
+  html {
+    scroll-padding-top: 78px;
+  }
+
   .site-header {
     min-height: 66px;
   }
@@ -1180,8 +1223,8 @@ h3 {
 
   .hero {
     grid-template-columns: 1fr;
-    min-height: auto;
-    padding-top: 112px;
+    padding-top: 106px;
+    padding-bottom: 44px;
     gap: 26px;
   }
 
@@ -1191,8 +1234,24 @@ h3 {
 
   .intro-section,
   .credentials-heading,
+  .credentials-section,
   .experience-section {
     grid-template-columns: 1fr;
+  }
+
+  .intro-section,
+  .services-section,
+  .experience-section,
+  .reviews-section,
+  .booking-section,
+  .credentials-section,
+  .visit-section {
+    scroll-margin-top: 78px;
+    padding-block: clamp(44px, 7vw, 68px);
+  }
+
+  .credential-grid {
+    justify-content: stretch;
   }
 
   .visit-card {
@@ -1201,10 +1260,6 @@ h3 {
 
   .visit-card-map {
     min-height: 260px;
-  }
-
-  .credentials-heading {
-    grid-template-columns: 1fr;
   }
 
   .service-grid {
@@ -1217,12 +1272,34 @@ h3 {
 }
 
 @media (max-width: 620px) {
+  html {
+    scroll-padding-top: 74px;
+  }
+
   .brand-name {
     font-size: 1.12rem;
   }
 
+  h1 {
+    font-size: clamp(2.7rem, 12vw, 3.35rem);
+  }
+
+  h2 {
+    font-size: clamp(1.88rem, 8vw, 2.35rem);
+  }
+
+  .hero {
+    padding-top: 102px;
+    padding-bottom: 38px;
+  }
+
+  .hero-copy {
+    margin-top: 16px;
+  }
+
   .hero-actions {
     display: grid;
+    margin-top: 22px;
   }
 
   .button {
@@ -1238,8 +1315,41 @@ h3 {
     padding: 18px;
   }
 
+  .service-card {
+    min-height: 224px;
+  }
+
+  .service-topline {
+    margin-bottom: 22px;
+  }
+
+  .section-heading {
+    margin-bottom: 24px;
+  }
+
+  .intro-section,
+  .services-section,
+  .experience-section,
+  .reviews-section,
+  .booking-section,
+  .credentials-section,
+  .visit-section {
+    scroll-margin-top: 74px;
+    padding-block: 42px;
+  }
+
+  .experience-list div {
+    min-height: 98px;
+    padding: 16px;
+  }
+
+  .reviews-card {
+    padding: 20px 22px;
+  }
+
   .visit-card {
     padding: 18px;
+    gap: 18px;
   }
 
   .visit-card-map {
@@ -1288,12 +1398,8 @@ h3 {
 }
 
 @media (max-width: 620px) {
-  .reviews-card {
-    padding: 20px 22px;
-  }
-
   .reviews-footer {
-    margin-top: 22px;
+    margin-top: 18px;
   }
 }
 

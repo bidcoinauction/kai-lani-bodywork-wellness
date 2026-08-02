@@ -45,10 +45,11 @@ export default function Booking() {
     const cardWidth = card.getBoundingClientRect().width;
     const step = cardWidth + 12;
     const maxScroll = el.scrollWidth - el.clientWidth;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     scrollGuardRef.current = true;
-    el.scrollLeft = Math.min(i * step, maxScroll);
+    el.scrollTo({ left: Math.min(i * step, maxScroll), behavior: reduceMotion ? "auto" : "smooth" });
     setIndex(i);
-    setTimeout(() => { scrollGuardRef.current = false; }, 0);
+    setTimeout(() => { scrollGuardRef.current = false; }, reduceMotion ? 0 : 260);
   }
 
   return (

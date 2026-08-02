@@ -444,12 +444,13 @@ export default function SquareBooking() {
     if (!card) return;
     const cardWidth = card.getBoundingClientRect().width;
     const maxScroll = el.scrollWidth - el.clientWidth;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     serviceScrollGuardRef.current = true;
-    el.scrollLeft = Math.min(i * (cardWidth + 12), maxScroll);
+    el.scrollTo({ left: Math.min(i * (cardWidth + 12), maxScroll), behavior: reduceMotion ? "auto" : "smooth" });
     setServiceIndex(i);
     setTimeout(() => {
       serviceScrollGuardRef.current = false;
-    }, 0);
+    }, reduceMotion ? 0 : 260);
   }
 
   function renderServiceCard(service, inCarousel = false) {
