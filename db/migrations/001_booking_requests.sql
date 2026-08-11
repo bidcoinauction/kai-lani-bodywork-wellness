@@ -67,6 +67,13 @@ CREATE TABLE IF NOT EXISTS booking_requests (
 -- once Square returns ACCEPTED, Square availability is the source of truth, so
 -- a later Square cancellation/reschedule is never hidden by a stale database
 -- hold.
+--
+-- The time range is built as a UTC timestamp-without-time-zone range so every
+-- function in the index expression is IMMUTABLE: timezone('UTC', tstz) and
+-- timestamp + interval are both immutable, and timestamp-without-time-zone
+-- arithmetic is DST/timezone independent. (tstz + interval is STABLE in
+-- PostgreSQL and cannot appear in an index expression; a plain IMMUTABLE
+-- wrapper around it would misrepresent its volatility and is not used.)
 ALTER TABLE booking_requests
   DROP CONSTRAINT IF EXISTS no_overlapping_active_requests;
 
@@ -74,7 +81,11 @@ ALTER TABLE booking_requests
   ADD CONSTRAINT no_overlapping_active_requests
   EXCLUDE USING gist (
     (CASE WHEN status IN ('pending', 'approving') THEN 'hold' END) WITH =,
-    tstzrange(start_at, start_at + duration_minutes * interval '1 minute') WITH &&
+    tsrange(
+      start_at AT TIME ZONE 'UTC',
+      (start_at AT TIME ZONE 'UTC') + duration_minutes * interval '1 minute',
+      '[)'
+    ) WITH &&
   );
 
 -- Request idempotency: request_key is already UNIQUE (backed by a unique
