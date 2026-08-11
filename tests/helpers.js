@@ -9,11 +9,20 @@ export function makeResponse() {
   return {
     statusCode: null,
     body: null,
+    headers: {},
     status(code) {
       this.statusCode = code;
       return this;
     },
     json(data) {
+      this.body = data;
+      return this;
+    },
+    setHeader(name, value) {
+      this.headers[name] = value;
+      return this;
+    },
+    send(data) {
       this.body = data;
       return this;
     },

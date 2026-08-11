@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import ApprovalPage from "./components/ApprovalPage.jsx";
 import Booking from "./components/Booking.jsx";
 import Credentials from "./components/Credentials.jsx";
 import Experience from "./components/Experience.jsx";
@@ -34,6 +35,13 @@ export default function App() {
     revealItems.forEach((item) => observer.observe(item));
     return () => observer.disconnect();
   }, []);
+
+  if (
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/approve")
+  ) {
+    return <ApprovalPage />;
+  }
 
   return (
     <>
