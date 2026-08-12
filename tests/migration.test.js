@@ -8,6 +8,10 @@ import { generateApprovalToken, hashToken } from "../lib/tokens.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const sql = readFileSync(resolve(here, "../db/migrations/001_booking_requests.sql"), "utf8");
+const reconciliationSql = readFileSync(
+  resolve(here, "../db/migrations/002_square_reconciliation.sql"),
+  "utf8",
+);
 
 const STATUSES = [
   "pending",
@@ -85,6 +89,43 @@ test("migration is idempotent (CREATE IF NOT EXISTS / ADD CONSTRAINT guards) for
   assert.match(sql, /CREATE TABLE IF NOT EXISTS booking_requests/);
   assert.match(sql, /DROP CONSTRAINT IF EXISTS no_overlapping_active_requests/);
   assert.match(sql, /CREATE EXTENSION IF NOT EXISTS btree_gist/);
+});
+
+test("migration 002 is additive and leaves migration 001 untouched", () => {
+  assert.match(reconciliationSql, /ALTER TABLE booking_requests/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_service_variation_id text/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_location_id text/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_team_member_id text/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_booking_version bigint/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_sync_status text NOT NULL DEFAULT 'not_created'/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_last_synced_at timestamptz/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_sync_error text/);
+  assert.match(reconciliationSql, /ADD COLUMN IF NOT EXISTS square_canceled_at timestamptz/);
+  assert.doesNotMatch(reconciliationSql, /DROP TABLE|DROP COLUMN|ALTER TABLE booking_requests\s+DROP/i);
+});
+
+test("migration 002 defines sync and durable webhook-event state without raw payload storage", () => {
+  for (const status of [
+    "not_created",
+    "creating",
+    "created",
+    "rescheduled",
+    "canceled",
+    "no_show",
+    "failed",
+  ]) {
+    assert.match(reconciliationSql, new RegExp(`'${status}'`));
+  }
+  assert.match(reconciliationSql, /CREATE TABLE IF NOT EXISTS square_webhook_events/);
+  assert.match(reconciliationSql, /event_id text NOT NULL UNIQUE/);
+  assert.match(reconciliationSql, /square_booking_version bigint/);
+  assert.match(reconciliationSql, /processing_status text NOT NULL DEFAULT 'received'/);
+  assert.match(reconciliationSql, /attempt_count integer NOT NULL DEFAULT 0/);
+  for (const status of ["received", "processing", "processed", "ignored", "failed"]) {
+    assert.match(reconciliationSql, new RegExp(`'${status}'`));
+  }
+  assert.match(reconciliationSql, /safe_error_code text/);
+  assert.doesNotMatch(reconciliationSql, /raw_payload|payload json|signature|customer_email|phone/i);
 });
 
 // ---------------------------------------------------------------------------

@@ -91,7 +91,7 @@ function makeSquareMock({ available = true, bookingStatus = "ACCEPTED" } = {}) {
       },
       create: async (request) => {
         state.createCalls.push(request);
-        return { booking: { id: "BK_APPROVED_1", status: bookingStatus } };
+        return { booking: { id: "BK_APPROVED_1", status: bookingStatus, version: 1 } };
       },
     },
     customers: {
@@ -360,7 +360,13 @@ test("approve creates the Square booking with a deterministic idempotency key an
 
   const store = await createStoreRow(created.body.requestId);
   assert.equal(store.status, "approved");
+  assert.equal(store.squareBookingId, "BK_APPROVED_1");
+  assert.equal(store.squareBookingVersion, 1);
   assert.equal(store.squareBookingStatus, "ACCEPTED");
+  assert.equal(store.squareSyncStatus, "created");
+  assert.equal(store.squareServiceVariationId, "VAR_CUSTOMIZED_60");
+  assert.equal(store.squareLocationId, "LOC_SANDBOX");
+  assert.equal(store.squareTeamMemberId, "TM_CHELSEA");
   assert.equal(store.confirmationEmailStatus, "sent");
   assert.equal(store.providerConfirmationEmailStatus, "sent");
 

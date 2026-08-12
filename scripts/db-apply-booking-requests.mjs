@@ -1,31 +1,54 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "@neondatabase/serverless";
 
 /**
- * Applies db/migrations/001_booking_requests.sql to the configured Neon
- * database. Requires DATABASE_URL in the environment.
+ * Applies numbered db/migrations/*.sql files to the configured Neon database
+ * in deterministic lexical order. Requires DATABASE_URL in the environment.
  *
  *   npm run db:booking-requests:apply
  */
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  console.error("DATABASE_URL is required to apply migrations.");
-  process.exit(1);
-}
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const migrationPath = resolve(here, "..", "db", "migrations", "001_booking_requests.sql");
-const migration = readFileSync(migrationPath, "utf8");
+const defaultMigrationsDir = resolve(here, "..", "db", "migrations");
 
-const pool = new Pool({ connectionString });
-try {
-  await pool.query(migration);
-  console.log("Applied db/migrations/001_booking_requests.sql");
-} catch (error) {
-  console.error("Migration failed:", error && error.message ? error.message : String(error));
-  process.exitCode = 1;
-} finally {
-  await pool.end();
+export function discoverMigrationFiles(migrationsDir = defaultMigrationsDir) {
+  return readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /^\d+_.+\.sql$/u.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .map((name) => ({ name, path: join(migrationsDir, name) }));
+}
+
+export async function applyMigrationFiles(pool, migrationFiles, logger = console) {
+  for (const migrationFile of migrationFiles) {
+    const migration = readFileSync(migrationFile.path, "utf8");
+    await pool.query(migration);
+    logger.log(`Applied db/migrations/${migrationFile.name}`);
+  }
+}
+
+export async function main({ env = process.env, logger = console } = {}) {
+  const connectionString = env.DATABASE_URL;
+  if (!connectionString) {
+    logger.error("DATABASE_URL is required to apply migrations.");
+    return 1;
+  }
+
+  const migrationFiles = discoverMigrationFiles();
+  const pool = new Pool({ connectionString });
+  try {
+    await applyMigrationFiles(pool, migrationFiles, logger);
+    return 0;
+  } catch (error) {
+    logger.error("Migration failed:", error && error.message ? error.message : String(error));
+    return 1;
+  } finally {
+    await pool.end();
+  }
+}
+
+if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
+  process.exitCode = await main();
 }

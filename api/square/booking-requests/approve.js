@@ -425,7 +425,11 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
     id: row.id,
     squareCustomerId: customerId,
     squareBookingId: booking.id,
+    squareBookingVersion: booking.version,
     squareBookingStatus: booking.status || "PENDING",
+    squareServiceVariationId: config.service.serviceVariationId,
+    squareLocationId: config.locationId,
+    squareTeamMemberId: config.teamMemberId,
     calendarUrl,
   });
 

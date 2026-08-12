@@ -1,28 +1,109 @@
-import { WebhooksHelper } from "../../lib/square.js";
+import { isBookingApprovalEnabled } from "../../lib/approval-config.js";
+import { getSquareClient, WebhooksHelper } from "../../lib/square.js";
+import { getBookingRequestStore, WebhookReconcileError } from "../../lib/store.js";
 import { readRawBody } from "../../lib/read-raw-body.js";
 
-/**
- * Sandbox-only event-id dedupe.
- *
- * In-memory state does not survive cold starts and is not shared across Vercel
- * function instances, so duplicate webhooks can still reach processing during
- * sandbox testing. A durable datastore for idempotent event handling is a
- * launch blocker for production.
- */
-const MAX_TRACKED_EVENTS = 1000;
-const processedEventIds = new Set();
+const SUPPORTED_EVENTS = new Set(["booking.created", "booking.updated"]);
+const CANCELED_STATUSES = new Set([
+  "DECLINED",
+  "CANCELLED_BY_CUSTOMER",
+  "CANCELLED_BY_SELLER",
+]);
+const CANCELLED_WITH_TIMESTAMP = new Set([
+  "CANCELLED_BY_CUSTOMER",
+  "CANCELLED_BY_SELLER",
+]);
 
-function markProcessed(eventId) {
-  processedEventIds.add(eventId);
-  if (processedEventIds.size > MAX_TRACKED_EVENTS) {
-    const oldest = processedEventIds.values().next().value;
-    processedEventIds.delete(oldest);
+function safeString(value, max = 120) {
+  if (typeof value !== "string") return "";
+  const cleaned = value.trim();
+  if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(cleaned)) return "redacted";
+  return cleaned.slice(0, max);
+}
+
+function bookingIdFromEvent(event) {
+  return (
+    typeof event.data?.object?.booking?.id === "string"
+      ? event.data.object.booking.id
+      : typeof event.data?.id === "string"
+        ? event.data.id
+        : ""
+  );
+}
+
+function bookingVersion(value) {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return null;
+}
+
+function firstSegment(booking) {
+  return Array.isArray(booking.appointmentSegments) ? booking.appointmentSegments[0] || null : null;
+}
+
+function durationMinutesFromBooking(booking) {
+  const segment = firstSegment(booking);
+  const duration = Number(segment?.durationMinutes);
+  if (duration === 60 || duration === 90) return duration;
+  return null;
+}
+
+function syncStatusFor(booking, row) {
+  const status = String(booking.status || "");
+  if (status === "ACCEPTED") {
+    const duration = durationMinutesFromBooking(booking);
+    const startChanged =
+      new Date(row.startAt).getTime() !== new Date(booking.startAt).getTime() ||
+      Number(row.durationMinutes) !== Number(duration);
+    return startChanged ? "rescheduled" : "created";
   }
+  if (status === "PENDING") return "created";
+  if (CANCELED_STATUSES.has(status)) return "canceled";
+  if (status === "NO_SHOW") return "no_show";
+  return "failed";
+}
+
+function normalizedAuthoritativeBooking(booking, row) {
+  const status = String(booking.status || "");
+  const version = bookingVersion(booking.version);
+  const durationMinutes = durationMinutesFromBooking(booking);
+  const segment = firstSegment(booking);
+
+  if (!booking.id) throw new WebhookReconcileError("booking_missing_id");
+  if (version == null) throw new WebhookReconcileError("booking_missing_version");
+  if (!booking.startAt || Number.isNaN(new Date(booking.startAt).getTime())) {
+    throw new WebhookReconcileError("booking_missing_start_at");
+  }
+  if (!durationMinutes) throw new WebhookReconcileError("booking_missing_duration");
+
+  const syncStatus = syncStatusFor(booking, row);
+  return {
+    squareBookingId: booking.id,
+    squareBookingVersion: version,
+    squareBookingStatus: status,
+    startAt: new Date(booking.startAt).toISOString(),
+    durationMinutes,
+    squareServiceVariationId: segment?.serviceVariationId || null,
+    squareLocationId: booking.locationId || null,
+    squareTeamMemberId: segment?.teamMemberId || null,
+    squareSyncStatus: syncStatus,
+    squareCanceledAt: CANCELLED_WITH_TIMESTAMP.has(status) ? new Date().toISOString() : null,
+    squareSyncError: syncStatus === "failed" ? `unknown_status:${safeString(status, 40)}` : null,
+  };
+}
+
+async function fetchAuthoritativeBooking(client, bookingId) {
+  const response = await client.bookings.get({ bookingId });
+  return response?.booking || null;
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+  if (!isBookingApprovalEnabled()) {
+    return res.status(503).json({ error: "Square webhook processing is not available right now." });
   }
 
   const signature = req.headers["x-square-hmacsha256-signature"];
@@ -46,7 +127,6 @@ export default async function handler(req, res) {
     signatureKey,
     notificationUrl,
   });
-
   if (!isFromSquare) {
     return res.status(401).json({ error: "Invalid signature" });
   }
@@ -57,31 +137,94 @@ export default async function handler(req, res) {
   } catch {
     return res.status(400).json({ error: "Invalid payload" });
   }
-
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     return res.status(400).json({ error: "Invalid payload" });
   }
 
+  const eventType = typeof event.type === "string" ? event.type : "";
+  if (!SUPPORTED_EVENTS.has(eventType)) {
+    return res.status(200).json({ received: true, ignored: true });
+  }
+
   const eventId = typeof event.event_id === "string" ? event.event_id : "";
-  if (eventId && processedEventIds.has(eventId)) {
-    console.info(`Webhook event status=duplicate eventId=${eventId}`);
-    return res.status(200).json({ received: true, duplicate: true });
-  }
-  if (eventId) {
-    markProcessed(eventId);
+  const squareBookingId = bookingIdFromEvent(event);
+  if (!eventId || !squareBookingId) {
+    return res.status(400).json({ error: "Invalid payload" });
   }
 
-  const eventType = typeof event.type === "string" ? event.type : "unknown";
-  const bookingId =
-    typeof event.data?.object?.booking?.id === "string"
-      ? event.data.object.booking.id
-      : "";
+  const merchantId = typeof event.merchant_id === "string" ? event.merchant_id : "";
+  const embeddedVersion = bookingVersion(event.data?.object?.booking?.version);
+  const store = getBookingRequestStore();
 
-  // SANDBOX STUB: event processing is intentionally a no-op until a durable
-  // datastore is selected. Only safe operational metadata is logged.
-  console.info(
-    `Webhook event status=stub eventId=${eventId} type=${eventType}${bookingId ? ` bookingId=${bookingId}` : ""}`,
-  );
+  const claim = await store.claimWebhookEvent({
+    eventId,
+    eventType,
+    merchantId,
+    squareBookingId,
+    squareBookingVersion: embeddedVersion,
+  });
+  if (!claim.claimed) {
+    return res.status(200).json({
+      received: true,
+      duplicate: true,
+      status: claim.event?.processingStatus || "unknown",
+    });
+  }
 
-  return res.status(200).json({ received: true });
+  let authoritative;
+  try {
+    authoritative = await fetchAuthoritativeBooking(getSquareClient(), squareBookingId);
+  } catch {
+    await store.markWebhookFailed(eventId, "square_fetch_failed");
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
+  if (!authoritative) {
+    await store.markWebhookFailed(eventId, "square_booking_missing");
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
+
+  const row = await store.findRequestBySquareBookingId(squareBookingId);
+  if (!row) {
+    await store.markWebhookIgnored(eventId, "unknown_booking_id");
+    return res.status(200).json({ received: true, ignored: true });
+  }
+
+  let normalized;
+  try {
+    normalized = normalizedAuthoritativeBooking(authoritative, row);
+  } catch (error) {
+    await store.markWebhookFailed(eventId, safeString(error.code || "invalid_booking"));
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
+
+  if (
+    row.squareBookingVersion != null &&
+    Number(normalized.squareBookingVersion) <= Number(row.squareBookingVersion)
+  ) {
+    await store.markWebhookProcessed(eventId);
+    return res.status(200).json({ received: true, stale: true });
+  }
+
+  try {
+    const result = await store.reconcileSquareBooking({
+      requestId: row.id,
+      ...normalized,
+    });
+    if (result?.reconciled === false) {
+      await store.markWebhookProcessed(eventId);
+      return res.status(200).json({ received: true, stale: true });
+    }
+    await store.markWebhookProcessed(eventId);
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    const code = error instanceof WebhookReconcileError ? error.code : "reconcile_failed";
+    await store.markWebhookFailed(eventId, safeString(code));
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
 }
+
+export const webhookTestInternals = {
+  SUPPORTED_EVENTS,
+  normalizedAuthoritativeBooking,
+  syncStatusFor,
+};

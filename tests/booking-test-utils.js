@@ -108,7 +108,7 @@ export function makeSquareMock({
         }
         const result = bookingsCreate
           ? await bookingsCreate(request, state)
-          : { booking: { id: "BK_APPROVED_1", status: bookingStatus } };
+          : { booking: { id: "BK_APPROVED_1", status: bookingStatus, version: 1 } };
         bookingsByKey.set(request.idempotencyKey, result);
         return result;
       },
