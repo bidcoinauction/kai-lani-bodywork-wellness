@@ -49,6 +49,6 @@ export async function main({ env = process.env, logger = console } = {}) {
   }
 }
 
-if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   process.exitCode = await main();
 }
