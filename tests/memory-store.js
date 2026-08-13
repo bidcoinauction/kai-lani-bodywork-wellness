@@ -167,7 +167,12 @@ export class MemoryBookingRequestStore {
       };
       this.webhookEvents.set(eventId, event);
     }
-    if (event.processingStatus === "received" || event.processingStatus === "failed") {
+    const processingStartedAt = event.processingStartedAt ? new Date(event.processingStartedAt).getTime() : null;
+    const staleProcessing =
+      event.processingStatus === "processing" &&
+      processingStartedAt != null &&
+      processingStartedAt < now.getTime() - 10 * 60 * 1000;
+    if (event.processingStatus === "received" || event.processingStatus === "failed" || staleProcessing) {
       event.processingStatus = "processing";
       event.processingStartedAt = now;
       event.attemptCount += 1;
