@@ -4,18 +4,19 @@ Square webhook intake must verify Square's signature, durably publish the normal
 
 ## Preview Variables
 
-Configure these for Preview only until the controlled retest passes:
+Configure these user-managed variables for Preview only until the controlled retest passes:
 
 - `QSTASH_URL`
 - `QSTASH_TOKEN`
 - `QSTASH_CURRENT_SIGNING_KEY`
 - `QSTASH_NEXT_SIGNING_KEY`
 - `QSTASH_WORKER_URL`
-- `VERCEL_AUTOMATION_BYPASS_SECRET`
 
 Preview uses QStash US region only. `QSTASH_URL` must be exactly `https://qstash-us-east-1.upstash.io`. Omitting `QSTASH_URL` would let QStash tooling default to a European endpoint, so the application fails closed when it is missing or not the approved US origin. `QSTASH_URL`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, and `QSTASH_NEXT_SIGNING_KEY` must all come from the same US-region QStash configuration.
 
 Use a clean HTTPS worker URL with no query string, for example `/api/square/webhook-worker` on the exact Preview deployment URL. Production secrets must be separate from Preview secrets.
+
+Vercel supplies `VERCEL_AUTOMATION_BYPASS_SECRET` as a runtime system variable when Protection Bypass for Automation is enabled. It is not expected in `vercel env ls`, and you should not create a duplicate project environment variable for it.
 
 Do not reuse Preview QStash credentials, signing keys, Square settings, or Vercel bypass secrets in Production.
 
