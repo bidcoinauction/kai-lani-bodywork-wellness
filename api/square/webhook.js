@@ -21,14 +21,30 @@ function safeString(value, max = 120) {
   return cleaned.slice(0, max);
 }
 
-function bookingIdFromEvent(event) {
-  return (
-    typeof event.data?.object?.booking?.id === "string"
-      ? event.data.object.booking.id
-      : typeof event.data?.id === "string"
-        ? event.data.id
-        : ""
+// Square classifies responses taking longer than 10 seconds as http_timeout.
+// This synchronous reconciliation path is Sandbox-only; a durable queue/worker
+// is required before Production webhook activation. A non-2xx synthetic test
+// result is acceptable when Square's fake booking does not exist; a 504 is not.
+// The SDK only enforces a timeout when timeoutInSeconds is supplied, and aborts
+// the underlying fetch on timeout, so no uncontrolled work continues.
+const SQUARE_RETRIEVE_TIMEOUT_SECONDS = 2;
+
+function bookingSuffix(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_.:-]{1,120}$/.test(value)) return "";
+  return value.slice(-6);
+}
+
+function logStage(stage, eventType, bookingId, startedAt, errorCode = null) {
+  console.info(
+    `webhook stage=${stage} eventType=${eventType} bookingSuffix=${bookingSuffix(bookingId)} elapsedMs=${Date.now() - startedAt}${errorCode ? ` error=${errorCode}` : ""}`,
   );
+}
+
+function bookingIdFromEvent(event) {
+  if (typeof event.data?.object?.booking?.id !== "string") return "";
+  const bookingId = event.data.object.booking.id.trim();
+  if (!/^[A-Za-z0-9_.-]{1,120}$/.test(bookingId)) return "";
+  return bookingId;
 }
 
 function bookingVersion(value) {
@@ -94,7 +110,10 @@ function normalizedAuthoritativeBooking(booking, row) {
 }
 
 async function fetchAuthoritativeBooking(client, bookingId) {
-  const response = await client.bookings.get({ bookingId });
+  const response = await client.bookings.get(
+    { bookingId },
+    { timeoutInSeconds: SQUARE_RETRIEVE_TIMEOUT_SECONDS, maxRetries: 0 },
+  );
   return response?.booking || null;
 }
 
@@ -148,21 +167,28 @@ export default async function handler(req, res) {
 
   const eventId = typeof event.event_id === "string" ? event.event_id : "";
   const squareBookingId = bookingIdFromEvent(event);
-  if (!eventId || !squareBookingId) {
+  if (!eventId) {
     return res.status(400).json({ error: "Invalid payload" });
   }
 
+  const startedAt = Date.now();
   const merchantId = typeof event.merchant_id === "string" ? event.merchant_id : "";
   const embeddedVersion = bookingVersion(event.data?.object?.booking?.version);
   const store = getBookingRequestStore();
 
-  const claim = await store.claimWebhookEvent({
-    eventId,
-    eventType,
-    merchantId,
-    squareBookingId,
-    squareBookingVersion: embeddedVersion,
-  });
+  let claim;
+  try {
+    claim = await store.claimWebhookEvent({
+      eventId,
+      eventType,
+      merchantId,
+      squareBookingId: squareBookingId || null,
+      squareBookingVersion: embeddedVersion,
+    });
+  } catch {
+    logStage("failed", eventType, squareBookingId, startedAt, "claim_failed");
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
   if (!claim.claimed) {
     return res.status(200).json({
       received: true,
@@ -170,30 +196,52 @@ export default async function handler(req, res) {
       status: claim.event?.processingStatus || "unknown",
     });
   }
+  logStage("claimed", eventType, squareBookingId, startedAt);
+
+  if (!squareBookingId) {
+    await store.markWebhookFailed(eventId, "booking_id_missing");
+    logStage("failed", eventType, squareBookingId, startedAt, "booking_id_missing");
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
 
   let authoritative;
   try {
+    logStage("square_fetch", eventType, squareBookingId, startedAt);
     authoritative = await fetchAuthoritativeBooking(getSquareClient(), squareBookingId);
   } catch {
     await store.markWebhookFailed(eventId, "square_fetch_failed");
+    logStage("failed", eventType, squareBookingId, startedAt, "square_fetch_failed");
     return res.status(500).json({ error: "Could not reconcile Square booking right now." });
   }
   if (!authoritative) {
     await store.markWebhookFailed(eventId, "square_booking_missing");
+    logStage("failed", eventType, squareBookingId, startedAt, "square_booking_missing");
     return res.status(500).json({ error: "Could not reconcile Square booking right now." });
   }
+  logStage("square_fetched", eventType, squareBookingId, startedAt);
 
-  const row = await store.findRequestBySquareBookingId(squareBookingId);
+  let row;
+  try {
+    row = await store.findRequestBySquareBookingId(squareBookingId);
+  } catch {
+    await store.markWebhookFailed(eventId, "local_lookup_failed");
+    logStage("failed", eventType, squareBookingId, startedAt, "local_lookup_failed");
+    return res.status(500).json({ error: "Could not reconcile Square booking right now." });
+  }
   if (!row) {
     await store.markWebhookIgnored(eventId, "unknown_booking_id");
+    logStage("ignored", eventType, squareBookingId, startedAt, "unknown_booking_id");
     return res.status(200).json({ received: true, ignored: true });
   }
+  logStage("local_lookup", eventType, squareBookingId, startedAt);
 
   let normalized;
   try {
     normalized = normalizedAuthoritativeBooking(authoritative, row);
   } catch (error) {
-    await store.markWebhookFailed(eventId, safeString(error.code || "invalid_booking"));
+    const code = safeString(error.code || "invalid_booking");
+    await store.markWebhookFailed(eventId, code);
+    logStage("failed", eventType, squareBookingId, startedAt, code);
     return res.status(500).json({ error: "Could not reconcile Square booking right now." });
   }
 
@@ -202,6 +250,7 @@ export default async function handler(req, res) {
     Number(normalized.squareBookingVersion) <= Number(row.squareBookingVersion)
   ) {
     await store.markWebhookProcessed(eventId);
+    logStage("stale", eventType, squareBookingId, startedAt);
     return res.status(200).json({ received: true, stale: true });
   }
 
@@ -212,19 +261,24 @@ export default async function handler(req, res) {
     });
     if (result?.reconciled === false) {
       await store.markWebhookProcessed(eventId);
+      logStage("stale", eventType, squareBookingId, startedAt);
       return res.status(200).json({ received: true, stale: true });
     }
     await store.markWebhookProcessed(eventId);
+    logStage("processed", eventType, squareBookingId, startedAt);
     return res.status(200).json({ received: true });
   } catch (error) {
     const code = error instanceof WebhookReconcileError ? error.code : "reconcile_failed";
-    await store.markWebhookFailed(eventId, safeString(code));
+    const safeCode = safeString(code);
+    await store.markWebhookFailed(eventId, safeCode);
+    logStage("failed", eventType, squareBookingId, startedAt, safeCode);
     return res.status(500).json({ error: "Could not reconcile Square booking right now." });
   }
 }
 
 export const webhookTestInternals = {
   SUPPORTED_EVENTS,
+  SQUARE_RETRIEVE_TIMEOUT_SECONDS,
   normalizedAuthoritativeBooking,
   syncStatusFor,
 };

@@ -5,9 +5,11 @@ import webhookHandler from "../api/square/webhook.js";
 import { makeRequest, makeResponse, setSquareClientForTests, resetSquareClientForTests } from "./helpers.js";
 import { MemoryBookingRequestStore } from "./memory-store.js";
 import {
+  createNeonPool,
   setBookingRequestStoreForTests,
   resetBookingRequestStoreForTests,
 } from "../lib/store.js";
+import { webhookTestInternals } from "../api/square/webhook.js";
 import { isSquareBookingActive } from "../lib/booking-requests.js";
 import { generateApprovalToken, hashToken } from "../lib/tokens.js";
 
@@ -73,6 +75,33 @@ function makeEvent({
       type: "booking",
       id: bookingId,
       object: { booking: { id: bookingId, version } },
+    },
+  });
+}
+
+function makeCompositeTestEvent({
+  eventId,
+  canonicalBookingId,
+  version = 0,
+  type = "booking.created",
+} = {}) {
+  eventCounter += 1;
+  return JSON.stringify({
+    merchant_id: "merchant-safe",
+    location_id: "LOC_SAFE",
+    type,
+    event_id: eventId || `evt-composite-${eventCounter}`,
+    created_at: "2026-08-12T16:31:01Z",
+    data: {
+      type: "booking",
+      id: `${canonicalBookingId}:${version}`,
+      object: {
+        booking: {
+          id: canonicalBookingId,
+          status: "ACCEPTED",
+          version,
+        },
+      },
     },
   });
 }
@@ -429,6 +458,277 @@ test("unsupported event types are accepted but ignored; booking.canceled is not 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { received: true, ignored: true });
   assert.equal(store.webhookEvents.has("evt-unsupported"), false);
+});
+
+test("Square test event shape uses canonical booking id and accepts version zero", async () => {
+  const canonicalBookingId = "bk-canonical-zero";
+  await createApprovedRequest({
+    requestKey: "req-composite-zero",
+    squareBookingId: canonicalBookingId,
+    squareBookingVersion: null,
+    squareSyncStatus: "creating",
+  });
+
+  const calls = { get: 0, bookingId: null, requestOptions: null, created: 0, customers: 0 };
+  setSquareClientForTests({
+    bookings: {
+      get: async ({ bookingId }, requestOptions) => {
+        calls.get += 1;
+        calls.bookingId = bookingId;
+        calls.requestOptions = requestOptions;
+        return { booking: makeBooking({ id: canonicalBookingId, version: 0, status: "ACCEPTED" }) };
+      },
+      searchAvailability: async () => ({ availabilities: [] }),
+      create: async () => {
+        calls.created += 1;
+        return { booking: { id: "unused" } };
+      },
+    },
+    customers: {
+      search: async () => ({ customers: [] }),
+      create: async () => {
+        calls.customers += 1;
+        return { customer: { id: "unused" } };
+      },
+    },
+  });
+
+  const res = await signedRun(
+    makeCompositeTestEvent({
+      eventId: "evt-composite-zero",
+      canonicalBookingId,
+      version: 0,
+    }),
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { received: true });
+  assert.equal(calls.get, 1);
+  assert.equal(calls.bookingId, canonicalBookingId);
+  assert.equal(calls.bookingId.includes(":"), false);
+  assert.equal(
+    calls.requestOptions.timeoutInSeconds,
+    webhookTestInternals.SQUARE_RETRIEVE_TIMEOUT_SECONDS,
+  );
+  assert.equal(calls.requestOptions.maxRetries, 0);
+  assert.equal(calls.created, 0);
+  assert.equal(calls.customers, 0);
+
+  const row = await store.findRequestBySquareBookingId(canonicalBookingId);
+  assert.equal(row.squareBookingVersion, 0);
+  assert.equal(row.squareBookingStatus, "ACCEPTED");
+  assert.equal(store.webhookEvents.get("evt-composite-zero").processingStatus, "processed");
+});
+
+test("Square test event shape for nonexistent booking fails safely and remains retryable", async () => {
+  const canonicalBookingId = "bk-does-not-exist";
+  const calls = {
+    get: 0,
+    bookingIds: [],
+    requestOptions: [],
+    created: 0,
+    searchedAvailability: 0,
+    customerSearches: 0,
+    customersCreated: 0,
+  };
+  setSquareClientForTests({
+    bookings: {
+      get: async ({ bookingId }, requestOptions) => {
+        calls.get += 1;
+        calls.bookingIds.push(bookingId);
+        calls.requestOptions.push(requestOptions);
+        return { booking: null };
+      },
+      searchAvailability: async () => {
+        calls.searchedAvailability += 1;
+        return { availabilities: [] };
+      },
+      create: async () => {
+        calls.created += 1;
+        return { booking: { id: "unused" } };
+      },
+    },
+    customers: {
+      search: async () => {
+        calls.customerSearches += 1;
+        return { customers: [] };
+      },
+      create: async () => {
+        calls.customersCreated += 1;
+        return { customer: { id: "unused" } };
+      },
+    },
+  });
+
+  const rawBody = makeCompositeTestEvent({
+    eventId: "evt-missing-composite-zero",
+    canonicalBookingId,
+    version: 0,
+  });
+  const signature = computeSignature(rawBody);
+  const beforeRows = store.rows.size;
+  const logs = [];
+  const originalInfo = console.info;
+  const originalError = console.error;
+  console.info = (...args) => logs.push(args.join(" "));
+  console.error = (...args) => logs.push(args.join(" "));
+
+  let first;
+  let retry;
+  try {
+    first = await run({ rawBody, headers: { "x-square-hmacsha256-signature": signature } });
+    retry = await run({ rawBody, headers: { "x-square-hmacsha256-signature": signature } });
+  } finally {
+    console.info = originalInfo;
+    console.error = originalError;
+  }
+
+  assert.equal(first.statusCode, 500);
+  assert.equal(retry.statusCode, 500);
+  assert.match(first.body.error, /Could not reconcile Square booking right now/);
+  assert.deepEqual(calls.bookingIds, [canonicalBookingId, canonicalBookingId]);
+  assert.equal(calls.bookingIds.some((id) => id.includes(":")), false);
+  for (const requestOptions of calls.requestOptions) {
+    assert.equal(
+      requestOptions.timeoutInSeconds,
+      webhookTestInternals.SQUARE_RETRIEVE_TIMEOUT_SECONDS,
+    );
+    assert.equal(requestOptions.maxRetries, 0);
+  }
+
+  const event = store.webhookEvents.get("evt-missing-composite-zero");
+  assert.equal(event.processingStatus, "failed");
+  assert.equal(event.safeErrorCode, "square_booking_missing");
+  assert.equal(event.processedAt, null);
+  assert.equal(event.squareBookingVersion, 0);
+  assert.equal(event.squareBookingId, canonicalBookingId);
+  assert.equal(event.attemptCount, 2);
+
+  assert.equal(store.rows.size, beforeRows);
+  assert.equal(store.subscriptions.size, 0);
+  assert.equal(calls.searchedAvailability, 0);
+  assert.equal(calls.created, 0);
+  assert.equal(calls.customerSearches, 0);
+  assert.equal(calls.customersCreated, 0);
+
+  const joined = logs.join("\n");
+  assert.doesNotMatch(joined, new RegExp(SIGNATURE_KEY));
+  assert.equal(joined.includes(canonicalBookingId), false);
+  assert.equal(joined.includes(rawBody), false);
+  assert.doesNotMatch(joined, /x-square|hmac|signature/i);
+});
+
+test("webhook external dependencies use conservative bounded budgets", async () => {
+  assert.equal(webhookTestInternals.SQUARE_RETRIEVE_TIMEOUT_SECONDS, 2);
+
+  const pool = createNeonPool("postgres://user:pass@localhost/db");
+  try {
+    assert.equal(pool.options.statement_timeout, 500);
+    assert.equal(pool.options.connectionTimeoutMillis, 1000);
+  } finally {
+    await pool.end().catch(() => {});
+  }
+});
+
+test("delayed Square retrieval failure returns before total budget and stays retryable", async () => {
+  const canonicalBookingId = "bk-delayed-fetch";
+  const calls = { get: 0, requestOptions: null, created: 0, customersCreated: 0 };
+  setSquareClientForTests({
+    bookings: {
+      get: async ({ bookingId }, requestOptions) => {
+        assert.equal(bookingId, canonicalBookingId);
+        calls.get += 1;
+        calls.requestOptions = requestOptions;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        throw new Error("simulated_square_timeout");
+      },
+      searchAvailability: async () => ({ availabilities: [] }),
+      create: async () => {
+        calls.created += 1;
+        return { booking: { id: "unused" } };
+      },
+    },
+    customers: {
+      search: async () => ({ customers: [] }),
+      create: async () => {
+        calls.customersCreated += 1;
+        return { customer: { id: "unused" } };
+      },
+    },
+  });
+
+  const started = Date.now();
+  const res = await signedRun(
+    makeCompositeTestEvent({
+      eventId: "evt-delayed-fetch",
+      canonicalBookingId,
+      version: 0,
+    }),
+  );
+  const elapsedMs = Date.now() - started;
+
+  assert.equal(res.statusCode, 500);
+  assert.ok(elapsedMs < 1000, `expected safe failure under 1000ms, got ${elapsedMs}ms`);
+  assert.equal(calls.get, 1);
+  assert.equal(
+    calls.requestOptions.timeoutInSeconds,
+    webhookTestInternals.SQUARE_RETRIEVE_TIMEOUT_SECONDS,
+  );
+  assert.equal(calls.requestOptions.maxRetries, 0);
+  assert.equal(calls.created, 0);
+  assert.equal(calls.customersCreated, 0);
+
+  const event = store.webhookEvents.get("evt-delayed-fetch");
+  assert.equal(event.processingStatus, "failed");
+  assert.equal(event.safeErrorCode, "square_fetch_failed");
+  assert.equal(event.processedAt, null);
+  assert.equal(event.attemptCount, 1);
+});
+
+test("missing or malformed canonical booking id never falls back to composite data.id", async () => {
+  for (const [name, bookingObject] of [
+    ["missing", { status: "ACCEPTED", version: 0 }],
+    ["malformed", { id: "bk-malformed:0", status: "ACCEPTED", version: 0 }],
+  ]) {
+    let fetches = 0;
+    setSquareClientForTests({
+      bookings: {
+        get: async () => {
+          fetches += 1;
+          return { booking: null };
+        },
+        searchAvailability: async () => ({ availabilities: [] }),
+        create: async () => ({ booking: { id: "unused" } }),
+      },
+      customers: {
+        search: async () => ({ customers: [] }),
+        create: async () => ({ customer: { id: "unused" } }),
+      },
+    });
+
+    const eventId = `evt-${name}-canonical-id`;
+    const rawBody = JSON.stringify({
+      merchant_id: "merchant-safe",
+      location_id: "LOC_SAFE",
+      type: "booking.created",
+      event_id: eventId,
+      created_at: "2026-08-12T16:31:01Z",
+      data: {
+        type: "booking",
+        id: "bk-composite-only:0",
+        object: { booking: bookingObject },
+      },
+    });
+    const res = await signedRun(rawBody);
+    const event = store.webhookEvents.get(eventId);
+
+    assert.equal(res.statusCode, 500);
+    assert.equal(fetches, 0);
+    assert.equal(event.processingStatus, "failed");
+    assert.equal(event.safeErrorCode, "booking_id_missing");
+    assert.equal(event.squareBookingId, null);
+    assert.equal(event.squareBookingVersion, 0);
+  }
 });
 
 test("fails safe when the raw body is unavailable (pre-parsed JSON)", async () => {
