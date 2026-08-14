@@ -23,6 +23,9 @@ import {
 } from "../lib/qstash-publisher.js";
 import {
   MAX_APPOINTMENT_SEGMENTS,
+  MAX_SEGMENT_DURATION_MINUTES,
+  MIN_SEGMENT_DURATION_MINUTES,
+  SquareWebhookMessageError,
   validateSquareWebhookQueueMessage,
 } from "../lib/square-webhook-message.js";
 
@@ -81,7 +84,7 @@ function computeSignature(rawBody, url = NOTIFICATION_URL, key = SIGNATURE_KEY) 
   return crypto.createHmac("sha256", key).update(url + rawBody).digest("base64");
 }
 
-function makeEvent({ eventId, type = "booking.updated", bookingId = BOOKING_ID, version = 1, status = "ACCEPTED", startAt = "2026-11-01T15:00:00.000Z", dataId } = {}) {
+function makeEvent({ eventId, type = "booking.updated", bookingId = BOOKING_ID, version = 1, status = "ACCEPTED", startAt = "2026-11-01T15:00:00.000Z", durationMinutes = 60, dataId } = {}) {
   eventCounter += 1;
   return JSON.stringify({
     merchant_id: "merchant-safe",
@@ -101,7 +104,7 @@ function makeEvent({ eventId, type = "booking.updated", bookingId = BOOKING_ID, 
           locationId: "LOC_SAFE",
           appointmentSegments: [
             {
-              durationMinutes: 60,
+              durationMinutes,
               serviceVariationId: "VAR_60",
               serviceVariationVersion: 2,
               teamMemberId: "TM_SAFE",
@@ -111,6 +114,51 @@ function makeEvent({ eventId, type = "booking.updated", bookingId = BOOKING_ID, 
       },
     },
   });
+}
+
+function makeSquareStyleEvent({
+  eventId,
+  type = "booking.created",
+  bookingId = BOOKING_ID,
+  version = 1,
+  status = "ACCEPTED",
+  startAt = "2026-11-01T15:00:00.000Z",
+  durationMinutes = 30,
+  serviceVariationId = "VAR_SAFE_30",
+  locationId = "LOC_SAFE",
+  teamMemberId = "TM_SAFE",
+  appointmentSegments,
+} = {}) {
+  eventCounter += 1;
+  return {
+    merchant_id: "merchant-safe",
+    type,
+    event_id: eventId || `evt-sq-${eventCounter}`,
+    created_at: "2026-07-30T12:00:00Z",
+    data: {
+      type: "booking",
+      id: bookingId,
+      object: {
+        booking: {
+          id: bookingId,
+          status,
+          version,
+          start_at: startAt,
+          location_id: locationId,
+          appointment_segments:
+            appointmentSegments ||
+            [
+              {
+                duration_minutes: durationMinutes,
+                service_variation_id: serviceVariationId,
+                service_variation_version: 2,
+                team_member_id: teamMemberId,
+              },
+            ],
+        },
+      },
+    },
+  };
 }
 
 function makeBooking({ id = BOOKING_ID, version = 1, status = "ACCEPTED", startAt = "2026-11-01T15:00:00.000Z", durationMinutes = 60, serviceVariationId = "VAR_60", locationId = "LOC_SAFE", teamMemberId = "TM_SAFE" } = {}) {
@@ -388,7 +436,8 @@ test("message schema: validates version zero, booking id, dates, duration, segme
     { bookingId: "bk-invalid:0" },
     { eventCreatedAt: "not-a-date" },
     { bookingStartAt: "not-a-date" },
-    { appointmentSegments: [{ ...message.appointmentSegments[0], durationMinutes: 30 }] },
+    { appointmentSegments: [{ ...message.appointmentSegments[0], durationMinutes: 0 }] },
+    { appointmentSegments: [{ ...message.appointmentSegments[0], durationMinutes: MAX_SEGMENT_DURATION_MINUTES + 1 }] },
     { appointmentSegments: Array.from({ length: MAX_APPOINTMENT_SEGMENTS + 1 }, () => message.appointmentSegments[0]) },
     { extraTopLevel: "not allowed" },
     { appointmentSegments: [{ ...message.appointmentSegments[0], extraSegment: "not allowed" }] },
@@ -396,6 +445,137 @@ test("message schema: validates version zero, booking id, dates, duration, segme
   ]) {
     assert.throws(() => validateSquareWebhookQueueMessage({ ...message, ...patch }));
   }
+});
+
+test("intake: official Square-style booking.created with 30-minute snake_case segment publishes once and returns 202", async () => {
+  const calls = installPublisher();
+  const rawBody = JSON.stringify(makeSquareStyleEvent({ eventId: "evt-sq-created-30", type: "booking.created" }));
+  const res = await signedIntake(rawBody);
+  assert.equal(res.statusCode, 202);
+  assert.deepEqual(res.body, { received: true, queued: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].eventId, "evt-sq-created-30");
+  assert.equal(calls[0].eventType, "booking.created");
+  assert.equal(calls[0].bookingId, BOOKING_ID);
+  assert.equal(calls[0].bookingStartAt, "2026-11-01T15:00:00.000Z");
+  assert.equal(calls[0].appointmentSegments.length, 1);
+  assert.equal(calls[0].appointmentSegments[0].durationMinutes, 30);
+  assert.equal(calls[0].appointmentSegments[0].serviceVariationId, "VAR_SAFE_30");
+  assert.equal(calls[0].appointmentSegments[0].teamMemberId, "TM_SAFE");
+});
+
+test("intake: official Square-style 30-minute event performs no Neon, Square, email, customer or booking work", async () => {
+  const calls = installPublisher({ delayMs: 10 });
+  let squareCalls = 0;
+  setSquareClientForTests({
+    bookings: { get: async () => { squareCalls += 1; return { booking: null }; } },
+    customers: { search: async () => ({ customers: [] }), create: async () => ({ customer: { id: "unused" } }) },
+  });
+  const beforeEvents = store.webhookEvents.size;
+  const rawBody = JSON.stringify(makeSquareStyleEvent({ eventId: "evt-sq-dur30-intake" }));
+  const res = await signedIntake(rawBody);
+  assert.equal(res.statusCode, 202);
+  assert.equal(calls.length, 1);
+  assert.equal(squareCalls, 0);
+  assert.equal(store.webhookEvents.size, beforeEvents);
+  assert.equal(store.rows.size, 0);
+  assert.equal(store.subscriptions.size, 0);
+});
+
+test("intake: snake_case raw segments stay strictly allowlisted and bounded", async () => {
+  const withNote = makeSquareStyleEvent({ eventId: "evt-sq-allow-note" });
+  withNote.data.object.booking.appointment_segments[0].seller_note = "not allowed";
+  const noteRejected = await signedIntake(JSON.stringify(withNote));
+  assert.equal(noteRejected.statusCode, 400);
+
+  const tooMany = makeSquareStyleEvent({ eventId: "evt-sq-too-many" });
+  tooMany.data.object.booking.appointment_segments = Array.from(
+    { length: MAX_APPOINTMENT_SEGMENTS + 1 },
+    (_, i) => ({
+      duration_minutes: 30,
+      service_variation_id: `VAR_SAFE_${i}`,
+      service_variation_version: 1,
+      team_member_id: "TM_SAFE",
+    }),
+  );
+  const tooManyRejected = await signedIntake(JSON.stringify(tooMany));
+  assert.equal(tooManyRejected.statusCode, 400);
+  assert.equal(store.webhookEvents.size, 0);
+});
+
+test("message schema: signed queue message accepts duration 30", () => {
+  const message = makeQueueMessage({ eventId: "evt-dur-30-schema", durationMinutes: 30 });
+  assert.equal(validateSquareWebhookQueueMessage(message), message);
+  assert.equal(message.appointmentSegments[0].durationMinutes, 30);
+});
+
+test("message schema: invalid segment durations are rejected at the queue boundary", () => {
+  const message = makeQueueMessage({ eventId: "evt-dur-invalid" });
+  const invalidDurations = [0, -1, -30, 1.5, 0.5, "abc", "1.5", "30.0", "", NaN, true, MIN_SEGMENT_DURATION_MINUTES - 1, MAX_SEGMENT_DURATION_MINUTES + 1, 1e9];
+  for (const bad of invalidDurations) {
+    assert.throws(
+      () =>
+        validateSquareWebhookQueueMessage({
+          ...message,
+          appointmentSegments: [{ ...message.appointmentSegments[0], durationMinutes: bad }],
+        }),
+      SquareWebhookMessageError,
+      `expected duration ${String(bad)} to be rejected`,
+    );
+  }
+  const okMin = makeQueueMessage({ eventId: "evt-dur-ok-min", durationMinutes: MIN_SEGMENT_DURATION_MINUTES });
+  assert.equal(validateSquareWebhookQueueMessage(okMin), okMin);
+  assert.equal(okMin.appointmentSegments[0].durationMinutes, MIN_SEGMENT_DURATION_MINUTES);
+});
+
+test("worker: signed 30-minute queue message processes after authoritative Square retrieval", async () => {
+  await createApprovedRequest({ squareBookingVersion: 0 });
+  setBookingMock(makeBooking({ version: 1 }));
+  const message = makeQueueMessage({ eventId: "evt-dur-30-worker", durationMinutes: 30, version: 1 });
+  const res = await runWorker({ rawBody: JSON.stringify(message) });
+  assert.equal(res.statusCode, 200);
+  assert.equal(store.webhookEvents.get("evt-dur-30-worker").processingStatus, "processed");
+});
+
+test("worker: 30-minute event still requires authoritative Square retrieval and does not create a local request", async () => {
+  let getCalls = 0;
+  setSquareClientForTests({
+    bookings: {
+      get: async () => { getCalls += 1; return { booking: makeBooking({ version: 1 }) }; },
+      searchAvailability: async () => ({ availabilities: [] }),
+      create: async () => ({ booking: { id: "unused" } }),
+    },
+    customers: { search: async () => ({ customers: [] }), create: async () => ({ customer: { id: "unused" } }) },
+  });
+  const beforeRows = store.rows.size;
+  const res = await runWorker({
+    rawBody: JSON.stringify(makeQueueMessage({ eventId: "evt-dur30-fetch", durationMinutes: 30, bookingId: "bk-dur30-unmatched" })),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ignored, true);
+  assert.equal(getCalls, 1);
+  assert.equal(store.rows.size, beforeRows);
+  assert.equal(store.subscriptions.size, 0);
+  assert.equal(store.webhookEvents.get("evt-dur30-fetch").processingStatus, "ignored");
+});
+
+test("worker: authoritative 30-minute Square booking never overwrites a matched Kai Lani request", async () => {
+  await createApprovedRequest({ squareBookingVersion: 0 });
+  setSquareClientForTests({
+    bookings: { get: async () => ({ booking: makeBooking({ version: 1, durationMinutes: 30 }) }) },
+    customers: { search: async () => ({ customers: [] }), create: async () => ({ customer: { id: "unused" } }) },
+  });
+  const res = await runWorker({
+    rawBody: JSON.stringify(makeQueueMessage({ eventId: "evt-dur30-match", durationMinutes: 30, version: 1 })),
+  });
+  assert.equal(res.statusCode, 503);
+  const event = store.webhookEvents.get("evt-dur30-match");
+  assert.equal(event.processingStatus, "failed");
+  assert.equal(event.safeErrorCode, "booking_missing_duration");
+  const row = await store.findRequestBySquareBookingId(BOOKING_ID);
+  assert.equal(row.durationMinutes, 60);
+  assert.equal(row.squareSyncStatus, "created");
+  assert.equal(row.squareBookingVersion, 0);
 });
 
 test("intake timing: delayed reconciliation cannot affect response", async () => {
