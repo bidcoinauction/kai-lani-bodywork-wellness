@@ -94,7 +94,8 @@ export default async function handler(req, res) {
     return res.status(202).json({ received: true, queued: true });
   } catch (error) {
     const code = error?.name === "AbortError" ? "qstash_publish_timeout" : "qstash_publish_failed";
-    logIntake("failed", eventType, message.bookingId, startedAt, code);
+    const status = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? String(error.status) : "";
+    logIntake("failed", eventType, message.bookingId, startedAt, code + (status ? ` status=${status}` : ""));
     return res.status(503).json({ error: "Could not queue Square webhook right now." });
   }
 }

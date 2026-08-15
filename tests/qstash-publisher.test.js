@@ -44,7 +44,10 @@ test("QStash publisher uses official publish REST contract with dedupe and forwa
   assert.deepEqual(result, { messageId: "msg_1" });
   assert.equal(requests.length, 1);
   const { url, init } = requests[0];
-  assert.equal(url, `${APPROVED_QSTASH_URL}/v2/publish/https%3A%2F%2Fpreview.example.vercel.app%2Fapi%2Fsquare%2Fwebhook-worker`);
+  assert.equal(url, `${APPROVED_QSTASH_URL}/v2/publish/https://preview.example.vercel.app/api/square/webhook-worker`);
+  assert.equal(url.includes("%3A%2F%2F"), false);
+  assert.equal(url.includes("%2F"), false);
+  assert.equal(url.includes(`${APPROVED_QSTASH_URL}/v2/publish/https://`), true);
   assert.equal(init.method, "POST");
   assert.equal(init.headers.Authorization, "Bearer qstash-token");
   assert.equal(init.headers["Upstash-Deduplication-Id"], MESSAGE.eventId);
@@ -66,6 +69,76 @@ test("QStash publisher treats duplicate 202 acceptance as success", async () => 
   });
   const result = await publisher.publishSquareWebhook(MESSAGE);
   assert.deepEqual(result, { messageId: "msg_original", deduplicated: true });
+});
+
+test("QStash publisher accepts official 200/201/202 publish responses", async () => {
+  for (const [status, body] of [
+    [200, { messageId: "msg_ok" }],
+    [201, { messageId: "msg_created" }],
+    [202, { messageId: "msg_accepted", deduplicated: true }],
+  ]) {
+    const publisher = new QStashHttpPublisher({
+      qstashUrl: APPROVED_QSTASH_URL,
+      token: "qstash-token",
+      workerUrl: "https://preview.example.vercel.app/api/square/webhook-worker",
+      bypassSecret: "vercel-bypass-secret",
+      fetchImpl: async () => ({ ok: true, status, json: async () => body }),
+    });
+    const result = await publisher.publishSquareWebhook(MESSAGE);
+    assert.deepEqual(result, body);
+  }
+});
+
+test("QStash publisher classifies publish failures by safe numeric status only", async () => {
+  for (const status of [400, 401, 429, 500, 502, 503]) {
+    let bodyRead = 0;
+    const publisher = new QStashHttpPublisher({
+      qstashUrl: APPROVED_QSTASH_URL,
+      token: "qstash-token",
+      workerUrl: "https://preview.example.vercel.app/api/square/webhook-worker",
+      bypassSecret: "vercel-bypass-secret",
+      fetchImpl: async () => ({
+        ok: false,
+        status,
+        text: async () => {
+          bodyRead += 1;
+          return "secret provider body";
+        },
+        json: async () => {
+          bodyRead += 1;
+          return { error: "secret provider body" };
+        },
+      }),
+    });
+    await assert.rejects(
+      () => publisher.publishSquareWebhook(MESSAGE),
+      (error) => {
+        assert.equal(error.message, "qstash_publish_failed");
+        assert.equal(error.status, status);
+        assert.equal(String(error).includes("secret provider body"), false);
+        return true;
+      },
+    );
+    assert.equal(bodyRead, 0);
+  }
+});
+
+test("QStash publisher publish failure with invalid status exposes no status", async () => {
+  const publisher = new QStashHttpPublisher({
+    qstashUrl: APPROVED_QSTASH_URL,
+    token: "qstash-token",
+    workerUrl: "https://preview.example.vercel.app/api/square/webhook-worker",
+    bypassSecret: "vercel-bypass-secret",
+    fetchImpl: async () => ({ ok: false, status: NaN, text: async () => "", json: async () => ({}) }),
+  });
+  await assert.rejects(
+    () => publisher.publishSquareWebhook(MESSAGE),
+    (error) => {
+      assert.equal(error.message, "qstash_publish_failed");
+      assert.equal("status" in error, false);
+      return true;
+    },
+  );
 });
 
 test("QStash publisher rejects missing config and worker URLs with query secrets", async () => {
