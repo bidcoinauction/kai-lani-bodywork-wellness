@@ -360,6 +360,35 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
     throw error;
   }
 
+  // The resume path (crash recovery) deliberately skips the availability
+  // re-check because a prior attempt's booking, if any, already occupies the
+  // slot. That means no serviceVariationVersion was carried over. Square's
+  // CreateBooking requires a valid service_variation_version, so resolve the
+  // authoritative current version from the catalog object itself. Never invent
+  // a version and never weaken the create call: if the catalog cannot confirm a
+  // version, the request fails closed as a server_config error before Square is
+  // called.
+  if (typeof serviceVariationVersion !== "bigint" && typeof serviceVariationVersion !== "number") {
+    try {
+      const catalogObject = await client.catalog.object.get({
+        objectId: config.service.serviceVariationId,
+      });
+      serviceVariationVersion = catalogObject?.object?.version ?? null;
+    } catch (error) {
+      serviceVariationVersion = null;
+    }
+    if (
+      typeof serviceVariationVersion !== "bigint" &&
+      typeof serviceVariationVersion !== "number"
+    ) {
+      console.error("Booking request approval missing service variation version");
+      await store.markFailed({ id: row.id, failureCode: "server_config" });
+      return res
+        .status(500)
+        .json({ error: "Could not approve the appointment right now. Please try again." });
+    }
+  }
+
   let customerId;
   try {
     customerId = await findOrCreateCustomer(client, {

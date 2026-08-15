@@ -352,6 +352,11 @@ test("approve creates the Square booking with a deterministic idempotency key an
   const createReq = state.createCalls[0];
   assert.equal(createReq.idempotencyKey, `kai-lani.request.${created.body.requestId}`);
   assert.equal(createReq.booking.startAt, SLOT);
+  assert.equal(
+    createReq.booking.appointmentSegments[0].serviceVariationVersion,
+    3,
+    "fresh approval preserves the availability-sourced version into the create",
+  );
   assert.match(createReq.booking.sellerNote, /Kai Lani website approval request: /);
   assert.doesNotMatch(
     JSON.stringify(createReq.booking.sellerNote),

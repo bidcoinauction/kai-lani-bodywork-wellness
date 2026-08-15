@@ -206,10 +206,115 @@ test("resuming an approving request reuses the deterministic booking key and nev
   assert.equal(state.createCalls[0].idempotencyKey, key);
   assert.equal(state.createCalls[1].idempotencyKey, key);
 
+  // The resume path must source a valid service variation version from the
+  // catalog (availability is deliberately not re-checked), and that version
+  // must be preserved into the Square create call.
+  assert.equal(state.catalogGetCalls.length, 1);
+  assert.equal(state.createCalls[1].booking.appointmentSegments[0].serviceVariationVersion, 3);
+
   const clientEmails = emails.filter((c) =>
     String(c.body.subject).includes("appointment is confirmed"),
   );
   assert.equal(clientEmails.length, 1, "one confirmation despite two attempts");
+});
+
+test("resuming an approving request preserves a catalog version of 0 (valid, not treated as missing)", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ serviceVariationVersion: 0 });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  const key = buildSquareIdempotencyKey(a.body.requestId);
+
+  const claimed = await store.claimForApproval(a.body.requestId);
+  assert.equal(claimed.status, "approving");
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, "approved");
+  assert.equal(state.catalogGetCalls.length, 1);
+  assert.equal(state.createCalls[state.createCalls.length - 1].booking.appointmentSegments[0].serviceVariationVersion, 0);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
+});
+
+test("resume fails closed when the catalog cannot confirm a service variation version", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ catalogGet: async () => ({ object: {} }) });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await store.claimForApproval(a.body.requestId);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 500);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "failed");
+  assert.equal((await store.getRequestById(a.body.requestId)).failureCode, "server_config");
+  assert.equal(state.createCalls.length, 0, "Square must never be called without a valid version");
+});
+
+test("fresh approval preserves an availability version of 0 into the create", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ serviceVariationVersion: 0 });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, "approved");
+  assert.equal(state.catalogGetCalls.length, 0, "fresh path must not need the catalog");
+  assert.equal(state.createCalls[state.createCalls.length - 1].booking.appointmentSegments[0].serviceVariationVersion, 0);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
+});
+
+test("fresh approval fails closed when availability lacks a version (never calls Square create)", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({
+    serviceVariationVersion: null,
+    available: true,
+  });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 500);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "failed");
+  assert.equal((await store.getRequestById(a.body.requestId)).failureCode, "server_config");
+  assert.equal(state.createCalls.length, 0);
+});
+
+test("resume fails closed when the catalog lookup itself errors", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({
+    catalogGet: async () => {
+      throw { statusCode: 500 };
+    },
+  });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await store.claimForApproval(a.body.requestId);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 500);
+  assert.equal((await store.getRequestById(a.body.requestId)).failureCode, "server_config");
+  assert.equal(state.createCalls.length, 0);
 });
 
 test("email failure after approval never marks the request failed; resubmit retries only the unsent notification", async () => {

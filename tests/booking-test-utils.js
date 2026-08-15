@@ -79,10 +79,13 @@ export function makeSquareMock({
   bookingStatus = "ACCEPTED",
   customers,
   bookingsCreate,
+  serviceVariationVersion = 3,
+  catalogGet,
 } = {}) {
   const state = {
     createCalls: [],
     availabilityCalls: 0,
+    catalogGetCalls: [],
     customerSearchCalls: [],
     customerCreateCalls: [],
     customerByKey: new Map(),
@@ -90,6 +93,14 @@ export function makeSquareMock({
   };
   const bookingsByKey = new Map();
   const client = {
+    catalog: {
+      object: {
+        get: catalogGet || (async (request) => {
+          state.catalogGetCalls.push(request);
+          return { object: { version: serviceVariationVersion } };
+        }),
+      },
+    },
     bookings: {
       searchAvailability: async (query) => {
         state.availabilityCalls += 1;
@@ -97,7 +108,7 @@ export function makeSquareMock({
         const requestedStart = query?.query?.filter?.startAtRange?.startAt || SLOT;
         return {
           availabilities: [
-            { startAt: requestedStart, appointmentSegments: [{ serviceVariationVersion: 3 }] },
+            { startAt: requestedStart, appointmentSegments: [{ serviceVariationVersion }] },
           ],
         };
       },
