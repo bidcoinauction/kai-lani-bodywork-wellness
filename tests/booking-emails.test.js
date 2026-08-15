@@ -36,6 +36,9 @@ function clearEmailEnv() {
     "EMAIL_FROM",
     "EMAIL_SANDBOX_RECIPIENT",
     "CHELSEA_NOTIFICATION_EMAIL",
+    "BOOKING_APPROVAL_ENABLED",
+    "BOOKING_APPROVAL_MODE",
+    "SQUARE_ENVIRONMENT",
     "EMAIL_REPLY_TO",
     "PUBLIC_SITE_URL",
   ]) {
@@ -46,12 +49,29 @@ function clearEmailEnv() {
 function installEmailEnv() {
   process.env.EMAIL_ENABLED = "true";
   process.env.EMAIL_MODE = "sandbox";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "sandbox";
+  process.env.SQUARE_ENVIRONMENT = "sandbox";
   process.env.RESEND_API_KEY = "test_resend_key";
   process.env.EMAIL_FROM = "Kai Lani Sandbox <onboarding@resend.dev>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
   process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@example.invalid";
   process.env.EMAIL_REPLY_TO = "reply@example.invalid";
   process.env.PUBLIC_SITE_URL = "https://preview.example.invalid";
+}
+
+function installProductionEmailEnv() {
+  process.env.EMAIL_ENABLED = "true";
+  process.env.EMAIL_MODE = "production";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "production";
+  process.env.SQUARE_ENVIRONMENT = "production";
+  process.env.RESEND_API_KEY = "prod_resend_key";
+  process.env.EMAIL_FROM = "Kai Lani <bookings@kailaniwellness.com>";
+  process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@kailaniwellness.com";
+  process.env.EMAIL_REPLY_TO = "chelsea@kailaniwellness.com";
+  process.env.PUBLIC_SITE_URL = "https://www.kailaniwellness.com";
 }
 
 function captureCalls() {
@@ -230,4 +250,74 @@ test("Resend failure returns safe status and logs no PII or tokens", async () =>
   } finally {
     console.info = originalInfo;
   }
+});
+
+test("production routes client emails to the real client and provider emails to Chelsea", async () => {
+  installProductionEmailEnv();
+  const calls = captureCalls();
+
+  await sendBookingRequestReceivedEmail(REQUEST);
+  await sendApprovedClientEmail(REQUEST);
+  await sendDeclinedClientEmail(REQUEST);
+  await sendNeedsRescheduleEmail(REQUEST);
+  await sendApprovalEmail(REQUEST);
+  await sendApprovedProviderEmail(REQUEST);
+
+  assert.equal(calls.length, 6);
+  for (const call of calls) {
+    assert.doesNotMatch(call.body.subject, /\[SANDBOX\]|TEST MESSAGE|Sandbox/);
+    assert.doesNotMatch(call.body.html ?? "", /TEST MESSAGE|Sandbox/);
+    assert.doesNotMatch(call.body.text ?? "", /TEST MESSAGE|Sandbox/);
+    assert.doesNotMatch(JSON.stringify(call.body.to), /sandbox@example/);
+  }
+
+  const clientSubjects = [
+    "We received your appointment request",
+    "Your appointment is confirmed",
+    "Your appointment request was not approved",
+    "That time is no longer available",
+  ];
+  const providerSubjects = [
+    "New appointment request awaiting approval",
+    "Appointment approved",
+  ];
+
+  for (const call of calls) {
+    if (clientSubjects.some((s) => call.body.subject === s)) {
+      assert.deepEqual(call.body.to, [REQUEST.email]);
+    }
+    if (providerSubjects.some((s) => call.body.subject === s)) {
+      assert.deepEqual(call.body.to, [process.env.CHELSEA_NOTIFICATION_EMAIL]);
+    }
+  }
+});
+
+test("production approved client and provider confirmations retain the ICS attachment", async () => {
+  installProductionEmailEnv();
+  const calls = captureCalls();
+
+  assert.equal(await sendApprovedClientEmail(REQUEST), "sent");
+  assert.equal(await sendApprovedProviderEmail(REQUEST), "sent");
+
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.body.attachments.length, 1);
+    assert.equal(call.body.attachments[0].filename, "kai-lani-appointment.ics");
+    assert.ok(call.body.attachments[0].content.length > 0);
+  }
+});
+
+test("production confirmations use deterministic idempotency keys without PII", async () => {
+  installProductionEmailEnv();
+  const calls = captureCalls();
+
+  await sendApprovedClientEmail(REQUEST);
+  await sendApprovedProviderEmail(REQUEST);
+
+  const keys = calls.map((call) => call.options.headers["Idempotency-Key"]);
+  assert.deepEqual(keys, [
+    "kai-lani/approved-client/REQ_EMAIL_123456",
+    "kai-lani/approved-provider/REQ_EMAIL_123456",
+  ]);
+  assert.doesNotMatch(keys.join(" "), /customer@example|980555|Ava|Client & Co/i);
 });

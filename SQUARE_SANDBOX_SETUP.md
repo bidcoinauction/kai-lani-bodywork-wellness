@@ -122,9 +122,12 @@ Set these in the Vercel project **Preview** environment
 | `SQUARE_SERVICE_DEEP_TISSUE_90_ID` | Catalog service variation ID |
 | `SQUARE_WEBHOOK_SIGNATURE_KEY` | Developer Console → Webhooks → signature key |
 | `SQUARE_WEBHOOK_NOTIFICATION_URL` | Full webhook URL (see below) |
-| `VITE_ENABLE_SQUARE_SANDBOX` | `true` for the Preview branch; `false`/unset everywhere else |
+| `VITE_ENABLE_BOOKING_REQUESTS` | `true` for the Preview branch; `false`/unset everywhere else |
 
-- Do **not** set `VITE_ENABLE_SQUARE_SANDBOX=true` in the Production environment.
+- Do **not** set `VITE_ENABLE_BOOKING_REQUESTS=true` in the Production
+  environment until the Production smoke test is approved. The flag is not a
+  Sandbox marker: the booking UI carries no Sandbox/test wording, and the
+  server independently fails closed to the matching Sandbox or Production mode.
 - Credentials stored only in Vercel Preview are not available to a local
   process. For local testing, create a gitignored `.env` file with the same
   names.
@@ -163,8 +166,10 @@ logged.
 2. Confirm the `/api/*` routes stay outside the SPA fallback rewrite
    (`vercel.json` already handles this) and that functions run on a supported
    Node runtime.
-3. Confirm the four-step flow renders with the visible **"Sandbox test mode"**
-   label only on the Preview URL.
+3. Confirm the four-step flow renders on the Preview URL only when
+   `VITE_ENABLE_BOOKING_REQUESTS` is `true` for the Preview. The UI has no
+   "Sandbox test mode" label; sandbox-indicating delivery is handled entirely
+   by the server email layer (`[SANDBOX]` subject prefix + `EMAIL_SANDBOX_RECIPIENT`).
 
 ## 11. Testing in Sandbox
 
@@ -208,11 +213,11 @@ Square account:
 - [ ] Re-verify all `SQUARE_SERVICE_*_ID` values against the production catalog.
 - [ ] Set production `SQUARE_ACCESS_TOKEN` / `SQUARE_LOCATION_ID` /
       `SQUARE_TEAM_MEMBER_ID` in the Production environment only.
-- [ ] Keep `VITE_ENABLE_SQUARE_SANDBOX` unset (or `false`) in Production.
+- [ ] Keep `VITE_ENABLE_BOOKING_REQUESTS` unset (or `false`) in Production
+      until the Production smoke test is approved.
 - [ ] Add durable rate limiting before opening to the public.
 - [ ] Add durable webhook storage and enable webhook processing.
 - [ ] Implement secure cancellation.
 - [ ] Validate webhook raw-body handling on Vercel with a real signed event.
 - [ ] Update the gift certificate flow only if Square gift certificates are
       separately approved.
-- [ ] Remove the "Sandbox test mode" label.

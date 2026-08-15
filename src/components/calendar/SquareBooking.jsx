@@ -2,15 +2,14 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import "./SquareBooking.css";
 
 /*
- * Square Appointments sandbox booking flow (4 steps):
+ * Appointment-request booking flow (4 steps):
  *   Service -> Date -> Time -> Details & confirm
  *
- * Rendered only when VITE_ENABLE_SQUARE_SANDBOX is "true" (Vercel Preview).
- * The compact "Sandbox preview" pill keeps it clearly separate from
- * production booking. This component never imports the Square server client.
+ * Rendered only when VITE_ENABLE_BOOKING_REQUESTS is "true" (explicitly set
+ * for the sandbox Preview or Production). The same flow runs against the
+ * server's configured environment, so the UI carries no Sandbox/test wording
+ * here. This component never imports the Square server client.
  */
-
-const IS_SANDBOX = import.meta.env.VITE_ENABLE_SQUARE_SANDBOX === "true";
 
 const BOOKING_TIMEZONE = "America/New_York";
 const BOOKING_WINDOW_DAYS = 14;
@@ -510,11 +509,9 @@ export default function SquareBooking() {
       return "Your request was saved, but a notification email could not be sent. Save your request reference.";
     }
     if (requestReceipt === "disabled") {
-      return "Your request was saved. Email delivery is not enabled in this Sandbox preview.";
+      return "Your request was saved. Email delivery is not enabled right now.";
     }
-    return IS_SANDBOX
-      ? "Your appointment request was sent in Square Sandbox for testing."
-      : "Your appointment request was sent.";
+    return "Your appointment request was sent.";
   })();
 
   return (
@@ -529,9 +526,6 @@ export default function SquareBooking() {
         <h2 className="sqb-shell-title">Find a time that works for you.</h2>
         <p className={`sqb-shell-copy${step === "service" ? " is-first" : ""}`}>
           Choose your session, then select an available day and time.
-        </p>
-        <p className="sqb-sandbox-pill" role="note">
-          Sandbox preview &mdash; test bookings only
         </p>
       </header>
 
@@ -883,7 +877,7 @@ export default function SquareBooking() {
                       booking REQUEST, so exposing it here would contradict the
                       pending-request state. */}
                   <button type="button" className="button ghost sqb-book-another" onClick={startOver}>
-                    {IS_SANDBOX ? "Book another test appointment" : "Book another appointment"}
+                    Book another appointment
                   </button>
                 </div>
               </div>

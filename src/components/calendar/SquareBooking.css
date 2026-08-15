@@ -41,31 +41,6 @@
   line-height: 1.55;
 }
 
-.sqb-sandbox-pill {
-  justify-self: start;
-  margin: 10px 0 0;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(116, 61, 50, 0.08);
-  border: 1px solid rgba(116, 61, 50, 0.24);
-  color: var(--coral);
-  font-size: 0.74rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.sqb-sandbox-pill::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--coral);
-  flex: none;
-}
-
 .sqb-status {
   position: absolute;
   width: 1px;
@@ -948,10 +923,6 @@
 
   .sqb-shell-copy.is-first {
     display: block;
-  }
-
-  .sqb-sandbox-pill {
-    margin-top: 8px;
   }
 
   .sqb-step-count {

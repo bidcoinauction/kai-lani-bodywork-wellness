@@ -32,6 +32,9 @@ function clearEmailEnv() {
     "EMAIL_FROM",
     "EMAIL_SANDBOX_RECIPIENT",
     "CHELSEA_NOTIFICATION_EMAIL",
+    "BOOKING_APPROVAL_ENABLED",
+    "BOOKING_APPROVAL_MODE",
+    "SQUARE_ENVIRONMENT",
     "EMAIL_REPLY_TO",
     "PUBLIC_SITE_URL",
   ]) {
@@ -42,6 +45,9 @@ function clearEmailEnv() {
 function installEmailEnv() {
   process.env.EMAIL_ENABLED = "true";
   process.env.EMAIL_MODE = "sandbox";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "sandbox";
+  process.env.SQUARE_ENVIRONMENT = "sandbox";
   process.env.RESEND_API_KEY = "test_resend_key";
   process.env.EMAIL_FROM = "Kai Lani Sandbox <onboarding@resend.dev>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";

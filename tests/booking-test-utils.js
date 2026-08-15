@@ -51,6 +51,19 @@ export function installEmailEnv() {
   process.env.PUBLIC_SITE_URL = BASE_URL;
 }
 
+export function installProductionEnv() {
+  process.env.SQUARE_ENVIRONMENT = "production";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "production";
+  process.env.EMAIL_ENABLED = "true";
+  process.env.EMAIL_MODE = "production";
+  process.env.RESEND_API_KEY = "prod_resend_key";
+  process.env.EMAIL_FROM = "Kai Lani <bookings@kailaniwellness.com>";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@kailaniwellness.com";
+  process.env.EMAIL_REPLY_TO = "chelsea@kailaniwellness.com";
+  process.env.PUBLIC_SITE_URL = "https://www.kailaniwellness.com";
+}
+
 export function clearAllEnv() {
   for (const key of [
     "SQUARE_ENVIRONMENT",
@@ -62,6 +75,7 @@ export function clearAllEnv() {
     "RESEND_API_KEY",
     "EMAIL_FROM",
     "EMAIL_SANDBOX_RECIPIENT",
+    "CHELSEA_NOTIFICATION_EMAIL",
     "EMAIL_REPLY_TO",
     "BOOKING_APPROVAL_TOKEN_TTL_MINUTES",
   ]) {

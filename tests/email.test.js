@@ -22,6 +22,9 @@ function clearEmailEnv() {
     "EMAIL_FROM",
     "EMAIL_SANDBOX_RECIPIENT",
     "CHELSEA_NOTIFICATION_EMAIL",
+    "BOOKING_APPROVAL_ENABLED",
+    "BOOKING_APPROVAL_MODE",
+    "SQUARE_ENVIRONMENT",
     "EMAIL_REPLY_TO",
     "PUBLIC_SITE_URL",
   ]) {
@@ -32,11 +35,27 @@ function clearEmailEnv() {
 function installEmailEnv() {
   process.env.EMAIL_ENABLED = "true";
   process.env.EMAIL_MODE = "sandbox";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "sandbox";
+  process.env.SQUARE_ENVIRONMENT = "sandbox";
   process.env.RESEND_API_KEY = "test_resend_key";
   process.env.EMAIL_FROM = "Kai Lani Sandbox <onboarding@resend.dev>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
   process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@example.invalid";
   process.env.EMAIL_REPLY_TO = "reply@example.invalid";
+}
+
+function installProductionEmailEnv() {
+  process.env.EMAIL_ENABLED = "true";
+  process.env.EMAIL_MODE = "production";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "production";
+  process.env.SQUARE_ENVIRONMENT = "production";
+  process.env.RESEND_API_KEY = "prod_resend_key";
+  process.env.EMAIL_FROM = "Kai Lani <bookings@kailaniwellness.com>";
+  process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@kailaniwellness.com";
+  process.env.EMAIL_REPLY_TO = "chelsea@kailaniwellness.com";
 }
 
 beforeEach(() => {
@@ -131,9 +150,104 @@ test("uses separate deterministic idempotency keys without PII", async () => {
   assert.doesNotMatch(keys.join(" "), /customer@example|980555|Ava|Client & Co/i);
 });
 
+test("production routes client confirmation to the real client address", async () => {
+  installProductionEmailEnv();
+  const calls = [];
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true };
+  };
+
+  const result = await sendBookingNotifications(BOOKING);
+
+  assert.deepEqual(result, { client: "sent", provider: "sent" });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].to, ["customer@example.invalid"]);
+  assert.deepEqual(calls[1].to, ["chelsea@kailaniwellness.com"]);
+});
+
+test("production client and provider messages carry no Sandbox marker", async () => {
+  installProductionEmailEnv();
+  const calls = [];
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true };
+  };
+
+  await sendBookingNotifications(BOOKING);
+
+  for (const call of calls) {
+    assert.doesNotMatch(call.subject, /\[SANDBOX\]|TEST MESSAGE|Sandbox/);
+    assert.doesNotMatch(call.html, /TEST MESSAGE|Sandbox/);
+    assert.doesNotMatch(call.text, /TEST MESSAGE|Sandbox/);
+  }
+});
+
+test("production never uses the sandbox recipient", async () => {
+  installProductionEmailEnv();
+  const calls = [];
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true };
+  };
+
+  await sendBookingNotifications(BOOKING);
+
+  for (const call of calls) {
+    assert.notDeepEqual(call.to, ["sandbox@example.invalid"]);
+    assert.doesNotMatch(JSON.stringify(call.to), /sandbox@example/);
+  }
+});
+
+test("production fails closed when the client email is missing or invalid", async () => {
+  installProductionEmailEnv();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: true };
+  };
+
+  const result = await sendBookingNotifications({ ...BOOKING, email: "" });
+
+  assert.deepEqual(result, { client: "disabled", provider: "sent" });
+  assert.equal(calls, 1);
+  assert.deepEqual(result.provider, "sent");
+});
+
+test("production fails closed when CHELSEA_NOTIFICATION_EMAIL is missing", async () => {
+  installProductionEmailEnv();
+  delete process.env.CHELSEA_NOTIFICATION_EMAIL;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: true };
+  };
+
+  const result = await sendBookingNotifications(BOOKING);
+
+  assert.deepEqual(result, { client: "disabled", provider: "disabled" });
+  assert.equal(calls, 0);
+});
+
+test("production with a sandbox EMAIL_MODE fails closed to disabled", async () => {
+  installEmailEnv();
+  process.env.SQUARE_ENVIRONMENT = "production";
+  process.env.BOOKING_APPROVAL_MODE = "production";
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: true };
+  };
+
+  const result = await sendBookingNotifications(BOOKING);
+
+  assert.deepEqual(result, { client: "disabled", provider: "disabled" });
+  assert.equal(calls, 0);
+});
+
 test("messages include escaped HTML and plain text", () => {
-  const html = emailTestInternals.clientHtml({ ...BOOKING, replyTo: "reply@example.invalid" });
-  const text = emailTestInternals.clientText({ ...BOOKING, replyTo: "reply@example.invalid" });
+  const html = emailTestInternals.clientHtml({ ...BOOKING, replyTo: "reply@example.invalid" }, true);
+  const text = emailTestInternals.clientText({ ...BOOKING, replyTo: "reply@example.invalid" }, true);
 
   assert.match(html, /Ava &lt;script&gt;/);
   assert.doesNotMatch(html, /Ava <script>/);

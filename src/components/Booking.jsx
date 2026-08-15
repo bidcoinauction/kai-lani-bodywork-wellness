@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { bookingServices, GIFT_CERT_URL } from "../data.js";
+import { bookingRequestsEnabled } from "../lib/booking-flag.js";
 import SquareBooking from "./calendar/SquareBooking.jsx";
 
-const SQUARE_SANDBOX_ENABLED = import.meta.env.VITE_ENABLE_SQUARE_SANDBOX === "true";
+const BOOKING_REQUESTS_ENABLED = bookingRequestsEnabled(import.meta.env);
 
 export default function Booking() {
   const trackRef = useRef(null);
@@ -54,7 +55,7 @@ export default function Booking() {
 
   return (
     <section className="booking-section" id="booking">
-      {SQUARE_SANDBOX_ENABLED ? (
+      {BOOKING_REQUESTS_ENABLED ? (
         <div data-reveal>
           <SquareBooking />
         </div>

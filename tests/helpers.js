@@ -62,6 +62,19 @@ export function installFullConfig() {
   process.env.SQUARE_SERVICE_PRENATAL_60_ID = "VAR_PRENATAL_60";
   process.env.SQUARE_SERVICE_CUSTOMIZED_90_ID = "VAR_CUSTOMIZED_90";
   process.env.SQUARE_SERVICE_DEEP_TISSUE_90_ID = "VAR_DEEP_TISSUE_90";
+  installGateEnv();
+}
+
+/**
+ * Explicit sandbox mode gate. Every handler that talks to Square or sends
+ * email now requires SQUARE_ENVIRONMENT === BOOKING_APPROVAL_MODE with
+ * BOOKING_APPROVAL_ENABLED="true"; test helpers configure that matching state
+ * so the fail-closed gates do not mask the code under test.
+ */
+export function installGateEnv() {
+  process.env.SQUARE_ENVIRONMENT = "sandbox";
+  process.env.BOOKING_APPROVAL_ENABLED = "true";
+  process.env.BOOKING_APPROVAL_MODE = "sandbox";
 }
 
 export function clearSquareEnv() {
@@ -75,6 +88,9 @@ export function clearSquareEnv() {
     "SQUARE_SERVICE_DEEP_TISSUE_90_ID",
     "SQUARE_WEBHOOK_SIGNATURE_KEY",
     "SQUARE_WEBHOOK_NOTIFICATION_URL",
+    "SQUARE_ENVIRONMENT",
+    "BOOKING_APPROVAL_ENABLED",
+    "BOOKING_APPROVAL_MODE",
   ]) {
     delete process.env[key];
   }

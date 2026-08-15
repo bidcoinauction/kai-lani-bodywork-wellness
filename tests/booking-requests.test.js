@@ -53,6 +53,8 @@ function installGateEnv() {
 function installEmailEnv() {
   process.env.EMAIL_ENABLED = "true";
   process.env.EMAIL_MODE = "sandbox";
+  process.env.SQUARE_ENVIRONMENT = "sandbox";
+  process.env.BOOKING_APPROVAL_MODE = "sandbox";
   process.env.RESEND_API_KEY = "test_resend_key";
   process.env.EMAIL_FROM = "Kai Lani Sandbox <onboarding@resend.dev>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
@@ -71,7 +73,7 @@ function clearAllEnv() {
     "RESEND_API_KEY",
     "EMAIL_FROM",
     "EMAIL_SANDBOX_RECIPIENT",
-    "EMAIL_REPLY_TO",
+    "BOOKING_APPROVAL_TOKEN_TTL_MINUTES",
   ]) {
     delete process.env[key];
   }
