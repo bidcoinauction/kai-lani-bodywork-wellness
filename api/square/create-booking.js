@@ -2,6 +2,7 @@ import { getSquareClient } from "../../lib/square.js";
 import { requireBookingConfig } from "../../lib/config.js";
 import { addMinutes } from "../../lib/time.js";
 import { sendBookingNotifications } from "../../lib/email.js";
+import { formatSquarePhoneE164 } from "../../lib/booking-requests.js";
 
 export const BOOKING_FLOW_REPLACED = "BOOKING_FLOW_REPLACED";
 
@@ -145,10 +146,15 @@ export async function findOrCreateCustomer(client, { firstName, lastName, email,
     }
   }
 
+  const squarePhone = formatSquarePhoneE164(phone);
+  if (!squarePhone) {
+    throw new Error("invalid_square_phone");
+  }
+
   const phoneSearch = await client.customers.search({
     query: {
       filter: {
-        phoneNumber: { exact: phone },
+        phoneNumber: { exact: squarePhone },
       },
     },
   });
@@ -160,7 +166,7 @@ export async function findOrCreateCustomer(client, { firstName, lastName, email,
     givenName: firstName,
     familyName: lastName,
     emailAddress: email,
-    phoneNumber: phone,
+    phoneNumber: squarePhone,
   });
   if (!created.customer || !created.customer.id) {
     throw new Error("customer_missing");

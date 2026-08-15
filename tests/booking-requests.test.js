@@ -546,3 +546,204 @@ test("approval GET without a token returns 400", async () => {
   const res = await get(approveHandler, {});
   assert.equal(res.statusCode, 400);
 });
+
+test("approval customer search receives only the E.164 phone value", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const searchFilters = [];
+  const client = {
+    bookings: {
+      searchAvailability: async () => ({
+        availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
+      }),
+      create: async () => ({ booking: { id: "BK_E164", status: "ACCEPTED", version: 1 } }),
+    },
+    customers: {
+      search: async ({ query }) => {
+        searchFilters.push(query.filter);
+        return { customers: [] };
+      },
+      create: async () => ({ customer: { id: "CUST_E164" } }),
+    },
+  };
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  assert.ok(token);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.status, "approved");
+
+  const phoneFilter = searchFilters.find((f) => f.phoneNumber);
+  assert.ok(phoneFilter, "must issue a phone search");
+  assert.equal(phoneFilter.phoneNumber.exact, "+19805550100");
+  assert.doesNotMatch(JSON.stringify(searchFilters), /"exact":"19805550100"/);
+});
+
+test("approval customer creation receives only the E.164 phone value", async () => {
+  installGateEnv();
+  installEmailEnv();
+  let createdCustomer = null;
+  const client = {
+    bookings: {
+      searchAvailability: async () => ({
+        availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
+      }),
+      create: async () => ({ booking: { id: "BK_E164C", status: "ACCEPTED", version: 1 } }),
+    },
+    customers: {
+      search: async () => ({ customers: [] }),
+      create: async (request) => {
+        createdCustomer = request.customer;
+        return { customer: { id: "CUST_E164C" } };
+      },
+    },
+  };
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  assert.ok(token);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 200);
+  assert.ok(createdCustomer, "customer create must be called");
+  assert.equal(createdCustomer.phoneNumber, "+19805550100");
+  assert.equal(createdCustomer.emailAddress, "ava@example.invalid");
+});
+
+test("approval preserves email-first search order and never creates when a customer matches", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const searchFilters = [];
+  let createCalls = 0;
+  const client = {
+    bookings: {
+      searchAvailability: async () => ({
+        availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
+      }),
+      create: async () => ({ booking: { id: "BK_EMAIL", status: "ACCEPTED", version: 1 } }),
+    },
+    customers: {
+      search: async ({ query }) => {
+        searchFilters.push(query.filter);
+        return { customers: [{ id: "CUST_EMAIL_MATCH" }] };
+      },
+      create: async () => {
+        createCalls += 1;
+        return { customer: { id: "SHOULD_NOT_CREATE" } };
+      },
+    },
+  };
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  assert.ok(token);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.status, "approved");
+  assert.equal(createCalls, 0, "existing customer must be reused, never created");
+  assert.ok(searchFilters.length >= 1);
+  const first = searchFilters[0];
+  assert.ok(first.emailAddress, "first search must be by email");
+  assert.equal(first.emailAddress.exact, "ava@example.invalid");
+});
+
+test("approval reproduces the real Square E.164 contract offline: a mock rejecting non-E.164 phone searches passes after the correction", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const searchedPhones = [];
+  const client = {
+    bookings: {
+      searchAvailability: async () => ({
+        availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
+      }),
+      create: async () => ({ booking: { id: "BK_CONTRACT", status: "ACCEPTED", version: 1 } }),
+    },
+    customers: {
+      search: async ({ query }) => {
+        const phone = query.filter?.phoneNumber?.exact;
+        if (phone !== undefined) {
+          searchedPhones.push(phone);
+          if (!/^\+[1-9]\d{1,14}$/.test(phone)) {
+            const err = new Error("INVALID_VALUE phone");
+            err.statusCode = 400;
+            throw err;
+          }
+          return { customers: [] };
+        }
+        return { customers: [] };
+      },
+      create: async () => ({ customer: { id: "CUST_CONTRACT" } }),
+    },
+  };
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  assert.ok(token);
+
+  const res = await post(approveHandler, { token });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.status, "approved");
+  assert.ok(searchedPhones.length >= 1, "phone search must have been attempted");
+  for (const phone of searchedPhones) {
+    assert.match(phone, /^\+/, "every phone search must carry the leading +");
+  }
+});
+
+test("approval never logs or returns the phone number or PII", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const logs = [];
+  const originalError = console.error;
+  const originalInfo = console.info;
+  console.error = (...args) => logs.push(args.map((a) => String(a)).join(" "));
+  console.info = (...args) => logs.push(args.map((a) => String(a)).join(" "));
+
+  let createCalls = 0;
+  let res;
+  const client = {
+    bookings: {
+      searchAvailability: async () => ({
+        availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
+      }),
+    },
+    customers: {
+      search: async () => {
+        const err = new Error("customer lookup failed");
+        throw err;
+      },
+      create: async () => {
+        createCalls += 1;
+        return { customer: { id: "SHOULD_NOT_CREATE" } };
+      },
+    },
+  };
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  try {
+    await post(bookingRequestsHandler, makeBody());
+    const token = approvalTokenFromEmails(emails);
+    assert.ok(token);
+    res = await post(approveHandler, { token });
+    assert.equal(res.statusCode, 500);
+    assert.equal(createCalls, 0);
+  } finally {
+    console.error = originalError;
+    console.info = originalInfo;
+  }
+
+  const allLogs = logs.join("\n");
+  assert.doesNotMatch(allLogs, /9805550100|19805550100|ava@example|Ava\s+Test/i, "logs must not contain the phone or PII");
+  assert.doesNotMatch(res.body ? JSON.stringify(res.body) : "", /ava@example|9805550100/i, "response must not contain PII");
+});

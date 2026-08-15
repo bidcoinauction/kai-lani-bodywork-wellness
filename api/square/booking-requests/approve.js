@@ -5,7 +5,7 @@ import {
   buildCustomerIdempotencyKey,
   buildSquareIdempotencyKey,
   findSlotAvailability,
-  normalizePhoneForMatch,
+  formatSquarePhoneE164,
   requestReference,
 } from "../../../lib/booking-requests.js";
 import { getBookingRequestStore } from "../../../lib/store.js";
@@ -599,7 +599,7 @@ class CustomerCreateError extends Error {
  */
 async function findOrCreateCustomer(client, { requestId, firstName, lastName, email, phone }) {
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-  const normalizedPhone = normalizePhoneForMatch(phone);
+  const squarePhone = formatSquarePhoneE164(phone);
 
   let emailCustomer = null;
   if (normalizedEmail) {
@@ -612,10 +612,10 @@ async function findOrCreateCustomer(client, { requestId, firstName, lastName, em
   }
 
   let phoneCustomer = null;
-  if (normalizedPhone) {
+  if (squarePhone) {
     const phoneSearch = await client.customers.search({
       query: {
-        filter: { phoneNumber: { exact: normalizedPhone } },
+        filter: { phoneNumber: { exact: squarePhone } },
       },
     });
     phoneCustomer = phoneSearch.customers?.[0] || null;
@@ -634,7 +634,7 @@ async function findOrCreateCustomer(client, { requestId, firstName, lastName, em
       givenName: firstName,
       familyName: lastName,
       emailAddress: email,
-      phoneNumber: phone,
+      phoneNumber: squarePhone,
     },
   });
   if (!created.customer || !created.customer.id) {
