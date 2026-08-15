@@ -1,11 +1,12 @@
+import { bookingRequestsEnabled } from "../lib/booking-flag.js";
 import SquareBooking from "./calendar/SquareBooking.jsx";
 
-const SQUARE_SANDBOX_ENABLED = import.meta.env.VITE_ENABLE_SQUARE_SANDBOX === "true";
+const BOOKING_REQUESTS_ENABLED = bookingRequestsEnabled(import.meta.env);
 
 export default function Booking() {
   return (
     <section className="booking-section" id="booking">
-      {SQUARE_SANDBOX_ENABLED ? (
+      {BOOKING_REQUESTS_ENABLED ? (
         <div data-reveal>
           <SquareBooking />
         </div>

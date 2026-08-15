@@ -21,7 +21,7 @@ export default function Header() {
       <button
         className="nav-toggle"
         type="button"
-        aria-label="Open navigation"
+        aria-label={isOpen ? "Close navigation" : "Open navigation"}
         aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
       >

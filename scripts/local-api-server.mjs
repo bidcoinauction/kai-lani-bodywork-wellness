@@ -9,6 +9,11 @@ import cancelBookingHandler from "../api/square/cancel-booking.js";
 import customersHandler from "../api/square/customers.js";
 import dashboardAuthHandler from "../api/square/dashboard/auth.js";
 import dashboardAppointmentsHandler from "../api/square/dashboard/appointments.js";
+import bookingRequestsHandler from "../api/square/booking-requests/index.js";
+import bookingRequestsLookupHandler from "../api/square/booking-requests/lookup.js";
+import bookingRequestsApproveHandler from "../api/square/booking-requests/approve.js";
+import bookingRequestsDeclineHandler from "../api/square/booking-requests/decline.js";
+import unsubscribeHandler from "../api/square/unsubscribe.js";
 
 const PORT = Number(process.env.LOCAL_API_PORT || 8787);
 
@@ -37,6 +42,14 @@ const routes = [
   ["GET", "/api/square/customers", customersHandler],
   ["POST", "/api/square/dashboard/auth", dashboardAuthHandler],
   ["GET", "/api/square/dashboard/appointments", dashboardAppointmentsHandler],
+  ["GET", "/api/square/booking-requests", bookingRequestsHandler],
+  ["POST", "/api/square/booking-requests", bookingRequestsHandler],
+  ["GET", "/api/square/booking-requests/lookup", bookingRequestsLookupHandler],
+  ["GET", "/api/square/booking-requests/approve", bookingRequestsApproveHandler],
+  ["POST", "/api/square/booking-requests/approve", bookingRequestsApproveHandler],
+  ["POST", "/api/square/booking-requests/decline", bookingRequestsDeclineHandler],
+  ["GET", "/api/square/unsubscribe", unsubscribeHandler],
+  ["POST", "/api/square/unsubscribe", unsubscribeHandler],
 ];
 
 export function createLocalServer({ env } = {}) {
@@ -93,14 +106,25 @@ function readAll(req) {
 
 function createHandlerResponse(raw) {
   let statusCode = 200;
+  const headers = {};
   return {
     status(code) {
       statusCode = code;
       return this;
     },
+    setHeader(name, value) {
+      headers[name] = value;
+      return this;
+    },
     json(data) {
-      raw.writeHead(statusCode, { "content-type": "application/json" });
+      headers["content-type"] = headers["content-type"] || "application/json";
+      raw.writeHead(statusCode, headers);
       raw.end(JSON.stringify(data));
+    },
+    send(data) {
+      headers["content-type"] = headers["content-type"] || "text/html; charset=utf-8";
+      raw.writeHead(statusCode, headers);
+      raw.end(String(data));
     },
   };
 }

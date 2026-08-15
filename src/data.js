@@ -7,7 +7,7 @@ export const services = [
     number: "01",
     duration: "60 min",
     name: "60 Min Customized Massage",
-    description: "A deeply personalized session tailored to your body's unique needs using a blend of intuitive touch and targeted techniques.",
+    description: "A deeply personalized session tailored to your body\u2019s unique needs using a blend of intuitive touch and targeted techniques.",
     price: "$93",
   },
   {
@@ -40,7 +40,7 @@ export const credentialCards = [
     id: "nc-board",
     eyebrow: "License verification",
     title: "NC Board of Massage & Bodywork Therapy",
-    detail: "NC LMBT license no. 19862 - Active",
+    detail: "NC LMBT license no. 19862 \u00B7 Active",
     href: "https://www.bmbt.org/",
     image: ncSealSrc,
     imageAlt: "Great Seal of the State of North Carolina",

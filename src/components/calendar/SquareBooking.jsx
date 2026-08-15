@@ -2,15 +2,14 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import "./SquareBooking.css";
 
 /*
- * Square Appointments sandbox booking flow (4 steps):
+ * Appointment-request booking flow (4 steps):
  *   Service -> Date -> Time -> Details & confirm
  *
- * Rendered only when VITE_ENABLE_SQUARE_SANDBOX is "true" (Vercel Preview).
- * The compact "Sandbox preview" pill keeps it clearly separate from
- * production booking. This component never imports the Square server client.
+ * Rendered only when VITE_ENABLE_BOOKING_REQUESTS is "true" (explicitly set
+ * for the sandbox Preview or Production). The same flow runs against the
+ * server's configured environment, so the UI carries no Sandbox/test wording
+ * here. This component never imports the Square server client.
  */
-
-const IS_SANDBOX = import.meta.env.VITE_ENABLE_SQUARE_SANDBOX === "true";
 
 const BOOKING_TIMEZONE = "America/New_York";
 const BOOKING_WINDOW_DAYS = 14;
@@ -157,6 +156,8 @@ export default function SquareBooking() {
   const [slotError, setSlotError] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [contact, setContact] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const [contactConsent, setContactConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState(null);
   const [bookingError, setBookingError] = useState(null);
@@ -229,6 +230,8 @@ export default function SquareBooking() {
     setSlots([]);
     setSelectedSlot(null);
     setContact({ firstName: "", lastName: "", email: "", phone: "" });
+    setContactConsent(false);
+    setMarketingConsent(false);
     setBookingResult(null);
     setBookingError(null);
     setSlotError(null);
@@ -318,6 +321,12 @@ export default function SquareBooking() {
       setBookingError("Please enter a valid phone number.");
       return;
     }
+    if (!contactConsent) {
+      setBookingError(
+        "Please consent to appointment-related communication by email or phone.",
+      );
+      return;
+    }
 
     if (!idempotencyRef.current) {
       idempotencyRef.current = makeIdempotencyKey();
@@ -325,9 +334,9 @@ export default function SquareBooking() {
 
     setSubmitting(true);
     setBookingError(null);
-    setStatusMessage("Creating your appointment\u2026");
+    setStatusMessage("Sending your appointment request\u2026");
     try {
-      const res = await fetch("/api/square/create-booking", {
+      const res = await fetch("/api/square/booking-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -337,19 +346,21 @@ export default function SquareBooking() {
           lastName: trimmed.lastName,
           email: trimmed.email,
           phone: trimmed.phone,
-          idempotencyKey: idempotencyRef.current,
+          requestKey: idempotencyRef.current,
+          contactConsent,
+          marketingConsent,
         }),
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok || !data || !data.bookingId) {
-        throw new Error(data?.error || "Could not create the appointment.");
+      if (!res.ok || !data || !data.requestId) {
+        throw new Error(data?.error || "Could not send the appointment request.");
       }
       setBookingResult(data);
-      setStatusMessage("Appointment created.");
+      setStatusMessage("Appointment request sent.");
       goTo("confirm");
     } catch (error) {
-      setBookingError(error?.message || "Could not create the appointment.");
-      setStatusMessage("Could not create the appointment. Please try again.");
+      setBookingError(error?.message || "Could not send the appointment request.");
+      setStatusMessage("Could not send the appointment request. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -377,14 +388,16 @@ export default function SquareBooking() {
     step === "service" ? !serviceKey
     : step === "date" ? !date
     : step === "time" ? !selectedSlot
-    : step === "contact" ? submitting
+    : step === "contact" ? submitting || !contactConsent
     : true;
 
   const primaryLabel =
     step === "contact"
       ? submitting
-        ? "Creating appointment\u2026"
-        : "Confirm test booking"
+        ? "Sending request\u2026"
+        : "Send request"
+      : step === "service" && !serviceKey
+        ? "Select a session"
       : "Continue";
 
   function handlePrimary() {
@@ -444,12 +457,13 @@ export default function SquareBooking() {
     if (!card) return;
     const cardWidth = card.getBoundingClientRect().width;
     const maxScroll = el.scrollWidth - el.clientWidth;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     serviceScrollGuardRef.current = true;
-    el.scrollLeft = Math.min(i * (cardWidth + 12), maxScroll);
+    el.scrollTo({ left: Math.min(i * (cardWidth + 12), maxScroll), behavior: reduceMotion ? "auto" : "smooth" });
     setServiceIndex(i);
     setTimeout(() => {
       serviceScrollGuardRef.current = false;
-    }, 0);
+    }, reduceMotion ? 0 : 260);
   }
 
   function renderServiceCard(service, inCarousel = false) {
@@ -486,17 +500,18 @@ export default function SquareBooking() {
         : "Select a day and time";
 
   const confirmationEmailNote = (() => {
-    const clientStatus = bookingResult?.notification?.client;
-    if (clientStatus === "sent") return "Test confirmation sent to the Sandbox inbox.";
-    if (clientStatus === "failed") {
-      return "Your test appointment was created, but the confirmation email could not be sent. Save your booking reference.";
+    const requestReceipt = bookingResult?.notification?.requestReceipt;
+    const approval = bookingResult?.notification?.approval;
+    if (requestReceipt === "sent" && approval === "sent") {
+      return "Your request was sent. Chelsea will review your requested time. Watch your inbox for an approval email.";
     }
-    if (clientStatus === "disabled") {
-      return "This appointment was created in Square Sandbox. Email delivery is not enabled.";
+    if (requestReceipt === "failed" || approval === "failed") {
+      return "Your request was saved, but a notification email could not be sent. Save your request reference.";
     }
-    return IS_SANDBOX
-      ? "This is a Square Sandbox appointment for testing. No real booking was created."
-      : "Your appointment was created.";
+    if (requestReceipt === "disabled") {
+      return "Your request was saved. Email delivery is not enabled right now.";
+    }
+    return "Your appointment request was sent.";
   })();
 
   return (
@@ -511,9 +526,6 @@ export default function SquareBooking() {
         <h2 className="sqb-shell-title">Find a time that works for you.</h2>
         <p className={`sqb-shell-copy${step === "service" ? " is-first" : ""}`}>
           Choose your session, then select an available day and time.
-        </p>
-        <p className="sqb-sandbox-pill" role="note">
-          Sandbox preview &mdash; test bookings only
         </p>
       </header>
 
@@ -787,6 +799,34 @@ export default function SquareBooking() {
                   discuss intake details with you directly.
                 </p>
 
+                <label className="sqb-consent sqb-consent-required">
+                  <input
+                    type="checkbox"
+                    name="contactConsent"
+                    checked={contactConsent}
+                    onChange={(e) => setContactConsent(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    I consent to appointment-related communications about this
+                    request by email or phone. My appointment is not confirmed
+                    until I receive an approval email from Chelsea.
+                  </span>
+                </label>
+
+                <label className="sqb-consent sqb-consent-optional">
+                  <input
+                    type="checkbox"
+                    name="marketingConsent"
+                    checked={marketingConsent}
+                    onChange={(e) => setMarketingConsent(e.target.checked)}
+                  />
+                  <span>
+                    Email me occasional wellness tips, studio updates and
+                    appointment offers. I can unsubscribe anytime.
+                  </span>
+                </label>
+
                 {bookingError && <p className="sqb-message sqb-error" role="alert">{bookingError}</p>}
               </form>
             )}
@@ -800,8 +840,12 @@ export default function SquareBooking() {
                   </svg>
                 </span>
                 <h3 className="sqb-confirm-title" tabIndex={-1} ref={headingRefs.confirm}>
-                  {IS_SANDBOX ? "Your test appointment is booked" : "Your appointment is booked"}
+                  Your appointment request was sent
                 </h3>
+                <p className="sqb-confirm-note">
+                  {bookingResult.message ||
+                    "Your appointment request was sent. Chelsea will review your requested time. Your appointment is not confirmed until you receive an approval email."}
+                </p>
                 <dl className="sqb-confirm-list">
                   <div>
                     <dt>Service</dt>
@@ -813,10 +857,10 @@ export default function SquareBooking() {
                       {formatDateLabel(date)} at {selectedSlot?.label}
                     </dd>
                   </div>
-                  {bookingResult.bookingId && (
+                  {bookingResult.requestId && (
                     <div>
-                      <dt>Booking reference</dt>
-                      <dd>{bookingResult.bookingId}</dd>
+                      <dt>Request reference</dt>
+                      <dd>{bookingResult.requestId}</dd>
                     </div>
                   )}
                 </dl>
@@ -824,8 +868,16 @@ export default function SquareBooking() {
                   {confirmationEmailNote}
                 </p>
                 <div className="sqb-confirm-actions">
+                  {/* Calendar integration point (not rendered yet): once an
+                      approval workflow exists, a link labeled "Add this
+                      appointment to Google Calendar" plus a kai-lani-appointment.ics
+                      download belong in this actions block. It must render ONLY
+                      for bookings whose Square status is ACCEPTED after Chelsea
+                      approves. Today this confirm step reflects a pending
+                      booking REQUEST, so exposing it here would contradict the
+                      pending-request state. */}
                   <button type="button" className="button ghost sqb-book-another" onClick={startOver}>
-                    {IS_SANDBOX ? "Book another test appointment" : "Book another appointment"}
+                    Book another appointment
                   </button>
                 </div>
               </div>
