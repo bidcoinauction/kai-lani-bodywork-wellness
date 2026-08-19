@@ -41,9 +41,9 @@ Appointments" guide:
    **Default Test Account**. This opens the Sandbox Square Dashboard.
 2. Choose **Appointments** → **Get started** to initialize Appointments.
 3. Complete the business-details page (name, phone, time zone).
-4. (Optional) Subscribe to **Appointments Plus/Premium** with the test card
-   `4111 1111 1111 1111`, CVV `111`, expiry `12/40`, postal `22222` if you want
-   to test seller-level writes.
+4. Keep **Appointments Free** for the launch workflow. The website creates
+   buyer-level bookings that start as pending; Plus/Premium is needed only for
+   future seller-level write experiments.
 5. On the Appointments page, create the services and add the staff member
    (see sections 5 and 6) — or use the Catalog/Team APIs instead.
 

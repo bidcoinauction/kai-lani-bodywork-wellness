@@ -9,8 +9,14 @@ against the official Square Invoices API documentation
 
 ## 1. Current State
 
-- Booking approval creates a Square **Appointment (Booking)** and a Square
-  **Customer** only. No order, invoice, payment link, payment, receipt,
+- Kai Lani launches on **Square Appointments Free**. Website approval creates a
+  buyer-level Square **Appointment (Booking)** and a Square **Customer** only;
+  no Square Plus/Premium subscription is required for this workflow.
+- The buyer-level booking is initially `PENDING`. Chelsea must accept it in
+  Square Dashboard and then click `Check Square status` on the approval page.
+  Only after Square reports `ACCEPTED` does the website send client/provider
+  confirmation emails, ICS attachments, and Google Calendar links.
+- No order, invoice, payment link, payment, receipt,
   refund, cancellation charge, or stored card is ever created (verified by
   grep across `api/`, `lib/`, `src/` — zero matches in billing paths; the two
   "request_receipt"/"invoice" hits are email-status column names, not
@@ -19,7 +25,8 @@ against the official Square Invoices API documentation
   `square_location_id`, `square_service_variation_id`, `square_team_member_id`,
   plus service selectable at booking time (`service_key`, `duration_minutes`).
   Prices exist in `lib/services.js` only (`price`: 93 / 93 / 97 / 123).
-- **Post-approval today:** approve → Square customer + appointment created →
+- **Post-approval today:** approve → Square customer + pending appointment
+  created → Chelsea accepts in Square Dashboard → `Check Square status` →
   client/provider confirmation emails with `.ics` + Google Calendar link.
   Nothing about money happens.
 - **Precondition facts:** a Square Appointment (Bookings API) is **not** an
@@ -106,16 +113,23 @@ opt in.
 
 ## 4. Invoice Lifecycle (launch — manual)
 
-1. Appointment approved (existing flow, unchanged).
-2. Appointment occurs. **No invoice is created before the appointment.**
-3. Chelsea opens the completed appointment in Square.
-4. Chelsea creates the invoice manually with the exact license text.
-5. Chelsea reviews recipient, service, amount, due date, accepted payment
+1. Chelsea approves the website request, creating a buyer-level Square booking
+   that is pending acceptance.
+2. Chelsea accepts the pending appointment in Square Dashboard and clicks
+   `Check Square status`; only then is the appointment confirmed by the website.
+3. Appointment occurs. **No invoice is created before the appointment.**
+4. Chelsea opens the completed appointment in Square.
+5. Chelsea creates the invoice manually with the exact license text.
+6. Chelsea reviews recipient, service, amount, due date, accepted payment
    methods, and license text.
-6. Chelsea sends the invoice manually (Square emails it via the chosen
+7. Chelsea sends the invoice manually (Square emails it via the chosen
    delivery method).
-7. Payment is handled by Square. Chelsea confirms the sent state in Square.
-8. Never mark paid unless Square or Chelsea confirms the actual payment.
+8. Payment is handled by Square. Chelsea confirms the sent state in Square.
+9. Never mark paid unless Square or Chelsea confirms the actual payment.
+
+Seller-level writes, automatic one-click final acceptance, and broad calendar
+reconciliation are future paid-plan capabilities. Webhook/QStash remain deferred
+and unset at launch. Manual invoicing is unchanged.
 
 ## 5. Chelsea Review and Send Step (manual)
 

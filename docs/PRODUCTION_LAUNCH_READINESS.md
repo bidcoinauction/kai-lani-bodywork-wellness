@@ -27,8 +27,9 @@ environment (item 14) before any Preview push.
 
 | Area | Status |
 |---|---|
-| Automated verification | PASS (275 tests, build, diff-check) |
-| Sandbox E2E booking | VERIFIED (approval -> Square ACCEPTED -> confirmations) |
+| Automated verification | PASS (baseline 275 tests; current local validation required before push) |
+| Square plan | Launches on Square Appointments Free using buyer-level booking creation |
+| Sandbox E2E booking | Two-stage flow: website creates Square PENDING, Chelsea accepts in Dashboard, then status check sends confirmations |
 | Production code blockers (B1/B2/B3) | RESOLVED (environment gates, email routing, frontend flag) |
 | Production merge readiness | WAITING ON OWNER DECISIONS + controlled smoke (sections 9/16/18) |
 | Guidance | **CONDITIONAL GO**. Do not enable Production without the smoke test. |
@@ -88,7 +89,8 @@ environment (item 14) before any Preview push.
   - Shared logic: `lib/{services,config,square,tokens,store,email,calendar,
     time,booking-requests,approval-config,overlap,read-json-body,read-raw-body,
     qstash-publisher,square-webhook-message,square-webhook-reconcile}.js`.
-  - DB: `db/migrations/001_booking_requests.sql`, `002_square_reconciliation.sql`;
+- DB: `db/migrations/001_booking_requests.sql`, `002_square_reconciliation.sql`,
+  `003_buyer_level_booking_state.sql`;
     applied only by `npm run db:booking-requests:apply`.
   - Frontend: new `src/components/ApprovalPage.{jsx,css}`, new booking UI
     `src/components/calendar/SquareBooking.jsx`, `App.jsx` routes `/approve`.
@@ -177,15 +179,17 @@ QStash variables at launch.**
 
 - Migrations are **manual only**: `npm run db:booking-requests:apply`
   (`scripts/db-apply-booking-requests.mjs`). No auto-migration on deploy.
-- Order: `001_booking_requests.sql` then `002_square_reconciliation.sql`.
-  `002` is additive and assumes `001` ran.
+- Order: `001_booking_requests.sql`, `002_square_reconciliation.sql`, then
+  `003_buyer_level_booking_state.sql`. `002` and `003` are additive and assume
+  earlier migrations ran. Do not auto-apply migrations on deploy.
 - Production DB is Neon via `@neondatabase/serverless`. Store enforces strict
   timeouts (`statement_timeout` 500 ms, connect 1000 ms) so DB work stays within
   Square's 10-second delivery pace; cold-pool behavior is a known consideration.
 - Schema (documented in the migrations + `lib/store.js`):
   - `booking_requests` with request idempotency (`request_key` unique),
-    exclusion constraint preventing overlapping *active* (pending/approving)
-    holds, and email-status audit columns.
+    exclusion constraint preventing overlapping *active*
+    (pending/approving/awaiting_square_acceptance) holds, and email-status
+    audit columns.
   - `email_subscriptions` (opt-in marketing consent only) and
     `square_webhook_events` (durable webhook tracking; dormant until webhooks
     are activated).
@@ -208,12 +212,22 @@ QStash variables at launch.**
   catalog. Sandbox IDs must not leak into Production env.
 - Customer matching is email-exact then phone-exact (E.164, NANP-validated);
   email/phone resolving to *different* customers stops for manual review
-  (`customer_conflict`). No Customer Directory notes are written; the
-  Square `sellerNote` is a safe request reference only.
+  (`customer_conflict`). No Customer Directory notes are written.
 - Booking creation uses deterministic idempotency keys derived from the request
-  id, and the resume path now sources an authoritative `service_variation_version`
-  from the catalog (`catalog.object.get`), failing closed (`server_config`)
-  before Square is called if the version cannot be resolved (fixed in `f2826a0`).
+  id and calls Square as a buyer-level booking (`seller_level=false`) so no
+  Square Plus/Premium subscription is required. Seller-level writes, automatic
+  one-click final acceptance, and broad calendar reconciliation remain future
+  paid-plan capabilities.
+- Buyer-level creation can return `PENDING`. In that case the website stores
+  `awaiting_square_acceptance`, holds the requested slot locally, sends no
+  client/provider confirmation emails, and exposes no confirmed calendar data.
+  Chelsea must open Square Dashboard, accept the pending appointment, return to
+  the approval page, and click `Check Square status`. Only after Square returns
+  `ACCEPTED` does the website finalize `approved` and send confirmation emails
+  with ICS/Google Calendar data.
+- Resume paths source an authoritative `service_variation_version` from the
+  catalog (`catalog.object.get`) when needed, failing closed (`server_config`)
+  before Square is called if the version cannot be resolved.
 - **Calendaring:** confirm whether the Square **Dashboard‑side** integration
   writes the accepted booking to Google Calendar, or whether the client-side
   "Add to Google Calendar" link plus ICS attachment (both already built and
@@ -264,7 +278,10 @@ Current protections (verified in SANDBOX):
   requests expire and release their website hold via `expirePendingRequests()`.
 - Approve/decline are atomic claims (`pending -> approving`, `pending ->
   declined`) guarded by token-lookup; a request cannot be re-decided after the
-  claim, and declining is blocked once approving.
+  claim, and declining is blocked once approving or awaiting Square acceptance.
+- Rechecking an `awaiting_square_acceptance` row is a POST to the existing
+  approval endpoint with the same token. It retrieves the persisted Square
+  booking by ID and never calls `CreateBooking` again.
 - Idempotent approve and client/server retry paths reuse deterministic Square
   keys; no duplicate customer/booking is created.
 - Referrer policy `no-referrer` on `index.html:6` prevents approval tokens from

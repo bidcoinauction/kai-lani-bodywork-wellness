@@ -80,7 +80,9 @@ function clearAllEnv() {
 }
 
 function makeSquareMock({ available = true, bookingStatus = "ACCEPTED" } = {}) {
-  const state = { createCalls: [], availabilityCalls: 0, available };
+  const state = { createCalls: [], getCalls: [], availabilityCalls: 0, available };
+  const bookingsByKey = new Map();
+  const bookingsById = new Map();
   const client = {
     bookings: {
       searchAvailability: async () => {
@@ -91,9 +93,17 @@ function makeSquareMock({ available = true, bookingStatus = "ACCEPTED" } = {}) {
             : [],
         };
       },
-      create: async (request) => {
-        state.createCalls.push(request);
-        return { booking: { id: "BK_APPROVED_1", status: bookingStatus, version: 1 } };
+      create: async (request, requestOptions) => {
+        state.createCalls.push({ ...request, requestOptions });
+        if (bookingsByKey.has(request.idempotencyKey)) return bookingsByKey.get(request.idempotencyKey);
+        const result = { booking: { id: "BK_APPROVED_1", status: bookingStatus, version: 1 } };
+        bookingsByKey.set(request.idempotencyKey, result);
+        bookingsById.set(result.booking.id, result);
+        return result;
+      },
+      get: async (request) => {
+        state.getCalls.push(request);
+        return bookingsById.get(request.bookingId) || { booking: { id: request.bookingId, status: bookingStatus, version: 1 } };
       },
     },
     customers: {
@@ -330,7 +340,7 @@ test("GET status and lookup return safe request details without the token", asyn
   assert.doesNotMatch(JSON.stringify(lookup.body), /approval_token_hash|token/i);
 });
 
-test("approve creates the Square booking with a deterministic idempotency key and safe seller note, then confirms", async () => {
+test("approve creates the Square booking with a deterministic idempotency key and buyer-level option, then confirms", async () => {
   installGateEnv();
   installEmailEnv();
   const { client, state } = makeSquareMock();
@@ -354,16 +364,14 @@ test("approve creates the Square booking with a deterministic idempotency key an
   const createReq = state.createCalls[0];
   assert.equal(createReq.idempotencyKey, `kai-lani.request.${created.body.requestId}`);
   assert.equal(createReq.booking.startAt, SLOT);
+  assert.deepEqual(state.createCalls[0].booking.sellerNote, undefined);
+  assert.equal("sellerNote" in state.createCalls[0].booking, false);
   assert.equal(
     createReq.booking.appointmentSegments[0].serviceVariationVersion,
     3,
     "fresh approval preserves the availability-sourced version into the create",
   );
-  assert.match(createReq.booking.sellerNote, /Kai Lani website approval request: /);
-  assert.doesNotMatch(
-    JSON.stringify(createReq.booking.sellerNote),
-    /ava@example|980555|medical|client/i,
-  );
+  assert.deepEqual(createReq.requestOptions, { queryParams: { seller_level: false } });
 
   const store = await createStoreRow(created.body.requestId);
   assert.equal(store.status, "approved");

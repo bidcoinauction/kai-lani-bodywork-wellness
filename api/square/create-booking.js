@@ -75,22 +75,25 @@ export async function createBookingFlow({
     phone,
   });
 
-  const response = await client.bookings.create({
-    idempotencyKey,
-    booking: {
-      startAt: start.toISOString(),
-      locationId: config.locationId,
-      customerId,
-      appointmentSegments: [
-        {
-          durationMinutes: config.service.durationMinutes,
-          serviceVariationId: config.service.serviceVariationId,
-          teamMemberId: config.teamMemberId,
-          serviceVariationVersion,
-        },
-      ],
+  const response = await client.bookings.create(
+    {
+      idempotencyKey,
+      booking: {
+        startAt: start.toISOString(),
+        locationId: config.locationId,
+        customerId,
+        appointmentSegments: [
+          {
+            durationMinutes: config.service.durationMinutes,
+            serviceVariationId: config.service.serviceVariationId,
+            teamMemberId: config.teamMemberId,
+            serviceVariationVersion,
+          },
+        ],
+      },
     },
-  });
+    { queryParams: { seller_level: false } },
+  );
 
   const booking = response.booking;
   if (!booking || !booking.id) {

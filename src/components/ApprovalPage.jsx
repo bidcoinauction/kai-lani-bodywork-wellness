@@ -30,6 +30,9 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+const PENDING_SQUARE_MESSAGE =
+  "The appointment is pending acceptance in Square. Open Square Dashboard, accept the pending appointment, then return here and check its status.";
+
 async function readJson(response) {
   try {
     return await response.json();
@@ -83,6 +86,8 @@ export default function ApprovalPage() {
             message:
               data.status === "approved"
                 ? "Your appointment is confirmed."
+                : data.status === "awaiting_square_acceptance"
+                  ? PENDING_SQUARE_MESSAGE
                 : data.status === "declined"
                   ? "This appointment request was declined."
                   : data.status === "failed"
@@ -185,15 +190,17 @@ export default function ApprovalPage() {
                 className="ap-btn ap-btn-primary"
                 onClick={() => decide(APPROVE_URL)}
               >
-                Approve request
+                {request.status === "awaiting_square_acceptance" ? "Check Square status" : "Approve request"}
               </button>
-              <button
-                type="button"
-                className="ap-btn ap-btn-ghost"
-                onClick={() => decide(DECLINE_URL)}
-              >
-                Decline request
-              </button>
+              {request.status !== "awaiting_square_acceptance" && (
+                <button
+                  type="button"
+                  className="ap-btn ap-btn-ghost"
+                  onClick={() => decide(DECLINE_URL)}
+                >
+                  Decline request
+                </button>
+              )}
             </div>
           </>
         )}
@@ -257,6 +264,22 @@ export default function ApprovalPage() {
               </>
             )}
 
+            {outcome.status === "awaiting_square_acceptance" && (
+              <>
+                <h2 className="ap-result-title">Pending acceptance in Square</h2>
+                <p className="ap-result-message">{outcome.message || PENDING_SQUARE_MESSAGE}</p>
+                <div className="ap-actions">
+                  <button
+                    type="button"
+                    className="ap-btn ap-btn-primary"
+                    onClick={() => decide(APPROVE_URL)}
+                  >
+                    Check Square status
+                  </button>
+                </div>
+              </>
+            )}
+
             {outcome.status === "declined" && (
               <>
                 <h2 className="ap-result-title">Appointment request declined</h2>
@@ -282,6 +305,7 @@ export default function ApprovalPage() {
               outcome.status !== "declined" &&
               outcome.status !== "needs_reschedule" &&
               outcome.status !== "failed" &&
+              outcome.status !== "awaiting_square_acceptance" &&
               !errorMessage && (
                 <p className="ap-result-message">This request could not be processed right now.</p>
               )}

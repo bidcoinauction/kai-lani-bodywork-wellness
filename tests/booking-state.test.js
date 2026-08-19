@@ -276,6 +276,166 @@ test("fresh approval preserves an availability version of 0 into the create", as
   assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
 });
 
+test("buyer-level PENDING stores awaiting_square_acceptance without confirmations or calendar data", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ bookingStatus: "PENDING" });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, "awaiting_square_acceptance");
+  assert.match(res.body.message, /pending acceptance in Square/i);
+  assert.equal(res.body.calendarUrl, undefined);
+  assert.equal(state.createCalls.length, 1);
+  assert.deepEqual(state.createCalls[0].requestOptions, { queryParams: { seller_level: false } });
+  assert.equal("sellerNote" in state.createCalls[0].booking, false);
+
+  const row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "awaiting_square_acceptance");
+  assert.equal(row.squareCustomerId, "CUST_APPROVE_1");
+  assert.equal(row.squareBookingId, "BK_APPROVED_1");
+  assert.equal(row.squareBookingVersion, 1);
+  assert.equal(row.squareBookingStatus, "PENDING");
+  assert.equal(row.squareSyncStatus, "creating");
+  assert.equal(row.squareServiceVariationId, "VAR_CUSTOMIZED_60");
+  assert.equal(row.squareLocationId, "LOC_SANDBOX");
+  assert.equal(row.squareTeamMemberId, "TM_CHELSEA");
+  assert.equal(row.calendarUrl, null);
+  assert.equal(row.confirmationEmailStatus, "none");
+  assert.equal(row.providerConfirmationEmailStatus, "none");
+
+  const confirmationEmails = emails.filter((c) =>
+    /appointment is confirmed|Appointment approved/.test(String(c.body.subject)),
+  );
+  assert.equal(confirmationEmails.length, 0);
+});
+
+test("awaiting_square_acceptance holds the slot until Square acceptance is resolved", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock({ bookingStatus: "PENDING" });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  await post(bookingRequestsHandler, makeBody());
+  await post(approveHandler, { token: approvalTokenFromEmails(emails) });
+  const overlap = await post(
+    bookingRequestsHandler,
+    makeBody({ requestKey: "req_test_awaiting_hold_1" }),
+  );
+
+  assert.equal(overlap.statusCode, 409);
+  assert.match(overlap.body.error, /no longer available/);
+});
+
+test("status-check POST retrieves a PENDING booking and never creates another", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ bookingStatus: "PENDING" });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  const checked = await post(approveHandler, { token });
+
+  assert.equal(checked.statusCode, 200);
+  assert.equal(checked.body.status, "awaiting_square_acceptance");
+  assert.equal(state.createCalls.length, 1);
+  assert.equal(state.getCalls.length, 1);
+  assert.deepEqual(state.getCalls[0], { bookingId: "BK_APPROVED_1" });
+});
+
+test("accepted status-check finalizes and sends each confirmation exactly once", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const createdBooking = { booking: { id: "BK_PENDING_ACCEPT", status: "PENDING", version: 0 } };
+  const { client, state } = makeSquareMock({ bookingsCreate: async () => createdBooking });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  createdBooking.booking.status = "ACCEPTED";
+  createdBooking.booking.version = 0;
+
+  const accepted = await post(approveHandler, { token });
+  const repeated = await post(approveHandler, { token });
+
+  assert.equal(accepted.body.status, "approved");
+  assert.equal(repeated.body.status, "approved");
+  assert.match(accepted.body.calendarUrl, /calendar\.google\.com\/calendar\/render/);
+  assert.equal(state.createCalls.length, 1);
+  assert.equal(state.getCalls.length, 1);
+
+  const row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "approved");
+  assert.equal(row.squareBookingVersion, 0);
+  assert.equal(row.squareBookingStatus, "ACCEPTED");
+  assert.equal(row.confirmationEmailStatus, "sent");
+  assert.equal(row.providerConfirmationEmailStatus, "sent");
+  assert.equal(emails.filter((c) => String(c.body.subject).includes("appointment is confirmed")).length, 1);
+  assert.equal(emails.filter((c) => String(c.body.subject).includes("Appointment approved")).length, 1);
+});
+
+test("declined or cancelled Square booking becomes terminal without confirmations", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const createdBooking = { booking: { id: "BK_PENDING_CANCEL", status: "PENDING", version: 2 } };
+  const { client, state } = makeSquareMock({ bookingsCreate: async () => createdBooking });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  createdBooking.booking.status = "CANCELLED_BY_SELLER";
+  createdBooking.booking.version = 3;
+
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.status, "needs_reschedule");
+  assert.equal(state.createCalls.length, 1);
+  const row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "needs_reschedule");
+  assert.equal(row.squareBookingStatus, "CANCELLED_BY_SELLER");
+  assert.equal(row.squareSyncStatus, "canceled");
+  assert.equal(emails.filter((c) => /appointment is confirmed|Appointment approved/.test(String(c.body.subject))).length, 0);
+});
+
+test("transient retrieve failure preserves awaiting state and stored Square ids", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ bookingStatus: "PENDING" });
+  client.bookings.get = async (request) => {
+    state.getCalls.push(request);
+    throw { statusCode: 500 };
+  };
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 500);
+  const row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "awaiting_square_acceptance");
+  assert.equal(row.squareBookingId, "BK_APPROVED_1");
+  assert.equal(row.squareCustomerId, "CUST_APPROVE_1");
+  assert.equal(state.createCalls.length, 1);
+  assert.equal(state.getCalls.length, 1);
+});
+
 test("fresh approval fails closed when availability lacks a version (never calls Square create)", async () => {
   installGateEnv();
   installEmailEnv();
@@ -515,12 +675,12 @@ test("customer matching: retries never create duplicate customers (idempotent cr
   }
 });
 
-test("a Square create error marks the request failed and it cannot re-approve", async () => {
+test("a non-retryable Square create error marks the request failed and it cannot re-approve", async () => {
   installGateEnv();
   installEmailEnv();
   const { client, state } = makeSquareMock({
     bookingsCreate: async () => {
-      throw { statusCode: 429 };
+      throw { statusCode: 400 };
     },
   });
   setSquareClientForTests(client);
@@ -530,7 +690,7 @@ test("a Square create error marks the request failed and it cannot re-approve", 
   const token = approvalTokenFromEmails(emails);
   const res = await post(approveHandler, { token });
 
-  assert.equal(res.statusCode, 429);
+  assert.equal(res.statusCode, 400);
   const row = await store.getRequestById(a.body.requestId);
   assert.equal(row.status, "failed");
   assert.equal(row.failureCode, "square_error");
@@ -543,6 +703,43 @@ test("a Square create error marks the request failed and it cannot re-approve", 
   const summary = await get(approveHandler, { token });
   assert.equal(summary.body.status, "failed");
   assert.equal(summary.body.failureCode, "square_error");
+});
+
+test("a transient Square create timeout remains retryable and resumes with the deterministic key", async () => {
+  installGateEnv();
+  installEmailEnv();
+  let first = true;
+  const createdBooking = { booking: { id: "BK_TIMEOUT_RESUME", status: "PENDING", version: 0 } };
+  const { client, state } = makeSquareMock({
+    bookingsCreate: async () => {
+      if (first) {
+        first = false;
+        throw { statusCode: 500 };
+      }
+      return createdBooking;
+    },
+  });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+
+  const failedTransient = await post(approveHandler, { token });
+  assert.equal(failedTransient.statusCode, 500);
+  let row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "approving");
+  assert.equal(row.squareBookingId, null);
+
+  const resumed = await post(approveHandler, { token });
+  assert.equal(resumed.statusCode, 200);
+  assert.equal(resumed.body.status, "awaiting_square_acceptance");
+  row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "awaiting_square_acceptance");
+  assert.equal(row.squareBookingId, "BK_TIMEOUT_RESUME");
+  assert.equal(state.createCalls.length, 2);
+  assert.equal(state.createCalls[0].idempotencyKey, buildSquareIdempotencyKey(a.body.requestId));
+  assert.equal(state.createCalls[1].idempotencyKey, buildSquareIdempotencyKey(a.body.requestId));
 });
 
 test("concurrent approve and decline cannot both succeed", async () => {

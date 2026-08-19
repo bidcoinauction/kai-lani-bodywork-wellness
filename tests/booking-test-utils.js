@@ -98,6 +98,7 @@ export function makeSquareMock({
 } = {}) {
   const state = {
     createCalls: [],
+    getCalls: [],
     availabilityCalls: 0,
     catalogGetCalls: [],
     customerSearchCalls: [],
@@ -106,6 +107,7 @@ export function makeSquareMock({
     available,
   };
   const bookingsByKey = new Map();
+  const bookingsById = new Map();
   const client = {
     catalog: {
       object: {
@@ -126,8 +128,8 @@ export function makeSquareMock({
           ],
         };
       },
-      create: async (request) => {
-        state.createCalls.push(request);
+      create: async (request, requestOptions) => {
+        state.createCalls.push({ ...request, requestOptions });
         if (bookingsByKey.has(request.idempotencyKey)) {
           return bookingsByKey.get(request.idempotencyKey);
         }
@@ -135,7 +137,13 @@ export function makeSquareMock({
           ? await bookingsCreate(request, state)
           : { booking: { id: "BK_APPROVED_1", status: bookingStatus, version: 1 } };
         bookingsByKey.set(request.idempotencyKey, result);
+        if (result?.booking?.id) bookingsById.set(result.booking.id, result);
         return result;
+      },
+      get: async (request) => {
+        state.getCalls.push(request);
+        if (bookingsById.has(request.bookingId)) return bookingsById.get(request.bookingId);
+        return { booking: { id: request.bookingId, status: bookingStatus, version: 1 } };
       },
     },
     customers: {

@@ -15,7 +15,7 @@ const TOKEN_REQUIRED = "An approval token is required.";
  * token. Idempotent: declining an already-declined request returns the same
  * safe outcome. The transition is atomic (pending -> declined), so a
  * concurrent approve and decline can never both succeed; once a request is
- * approving, approved, failed or expired it can never be declined.
+ * approving, awaiting Square acceptance, approved, failed or expired it can never be declined.
  */
 export default async function handler(req, res) {
   if (!isBookingApprovalEnabled()) {
@@ -66,6 +66,11 @@ export default async function handler(req, res) {
       .status(409)
       .json({ status: "approving", error: "This appointment request is being processed. It can no longer be declined." });
   }
+  if (row.status === "awaiting_square_acceptance") {
+    return res
+      .status(409)
+      .json({ status: "awaiting_square_acceptance", error: "This appointment request is pending acceptance in Square. It can no longer be declined here." });
+  }
   if (row.status === "declined") {
     return res.status(200).json({
       status: "declined",
@@ -101,6 +106,11 @@ export default async function handler(req, res) {
       return res
         .status(409)
         .json({ status: "approving", error: "This appointment request is being processed. It can no longer be declined." });
+    }
+    if (current?.status === "awaiting_square_acceptance") {
+      return res
+        .status(409)
+        .json({ status: "awaiting_square_acceptance", error: "This appointment request is pending acceptance in Square. It can no longer be declined here." });
     }
     if (current?.status === "declined") {
       return res.status(200).json({

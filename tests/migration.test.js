@@ -12,10 +12,15 @@ const reconciliationSql = readFileSync(
   resolve(here, "../db/migrations/002_square_reconciliation.sql"),
   "utf8",
 );
+const buyerLevelSql = readFileSync(
+  resolve(here, "../db/migrations/003_buyer_level_booking_state.sql"),
+  "utf8",
+);
 
 const STATUSES = [
   "pending",
   "approving",
+  "awaiting_square_acceptance",
   "approved",
   "declined",
   "expired",
@@ -23,9 +28,9 @@ const STATUSES = [
   "needs_reschedule",
 ];
 
-test("migration defines all seven request statuses", () => {
+test("migrations define all request statuses", () => {
   for (const status of STATUSES) {
-    assert.match(sql, new RegExp(`'${status}'`), `missing status ${status}`);
+    assert.match(`${sql}\n${buyerLevelSql}`, new RegExp(`'${status}'`), `missing status ${status}`);
   }
 });
 
@@ -128,10 +133,23 @@ test("migration 002 defines sync and durable webhook-event state without raw pay
   assert.doesNotMatch(reconciliationSql, /raw_payload|payload json|signature|customer_email|phone/i);
 });
 
+test("migration 003 additively adds awaiting_square_acceptance to status and exclusion constraint", () => {
+  assert.match(buyerLevelSql, /awaiting_square_acceptance/);
+  assert.match(buyerLevelSql, /booking_requests_status_check/);
+  assert.match(buyerLevelSql, /pg_constraint[\s\S]*contype = 'c'/);
+  assert.match(buyerLevelSql, /pg_constraint[\s\S]*contype = 'x'/);
+  assert.match(buyerLevelSql, /no_overlapping_active_requests/);
+  assert.match(
+    buyerLevelSql,
+    /status IN \('pending', 'approving', 'awaiting_square_acceptance'\)/,
+  );
+  assert.doesNotMatch(buyerLevelSql, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/i);
+});
+
 // ---------------------------------------------------------------------------
 // Functional mirror of the exclusion constraint. MemoryBookingRequestStore
 // enforces the same invariants as the database: only ACTIVE (pending and
-// approving) rows hold their time window, and adjacency at a range boundary is
+// approving/awaiting_square_acceptance) rows hold their time window, and adjacency at a range boundary is
 // allowed. These tests pin the behavior the migration must guarantee.
 // ---------------------------------------------------------------------------
 
@@ -151,7 +169,7 @@ async function createRequestAt(store, key, startAt, durationMinutes = 60) {
   });
 }
 
-test("overlapping pending and approving ranges are rejected", async () => {
+test("overlapping pending, approving, and awaiting ranges are rejected", async () => {
   const store = new MemoryBookingRequestStore();
 
   const pendingOne = await createRequestAt(store, "k-p1", "2026-09-01T10:00:00Z");
@@ -166,6 +184,19 @@ test("overlapping pending and approving ranges are rejected", async () => {
     createRequestAt(store, "k-p3", "2026-09-01T10:15:00Z"),
     (err) => err.code === "23P01",
     "pending overlapping approving must be rejected",
+  );
+
+  await store.markAwaitingSquareAcceptance({
+    id: pendingOne.id,
+    squareCustomerId: "cus_test",
+    squareBookingId: "bk_pending_test",
+    squareBookingVersion: 0,
+    squareBookingStatus: "PENDING",
+  });
+  await assert.rejects(
+    createRequestAt(store, "k-p4", "2026-09-01T10:15:00Z"),
+    (err) => err.code === "23P01",
+    "pending overlapping awaiting_square_acceptance must be rejected",
   );
 });
 

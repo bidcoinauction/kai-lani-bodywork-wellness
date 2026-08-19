@@ -42,6 +42,8 @@ function replayMessage(status) {
       return "This appointment request could not be processed.";
     case "approving":
       return "This appointment request is being processed. Please check your email for an update.";
+    case "awaiting_square_acceptance":
+      return "This appointment is pending acceptance in Square.";
     default:
       return PENDING_MESSAGE;
   }

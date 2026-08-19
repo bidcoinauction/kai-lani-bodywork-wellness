@@ -6,7 +6,6 @@ import {
   buildSquareIdempotencyKey,
   findSlotAvailability,
   formatSquarePhoneE164,
-  requestReference,
 } from "../../../lib/booking-requests.js";
 import { getBookingRequestStore } from "../../../lib/store.js";
 import { hashToken } from "../../../lib/tokens.js";
@@ -33,7 +32,10 @@ const CUSTOMER_CONFLICT_MESSAGE =
  * State machine:
  *   pending    -> approving   atomic claim (before any Square call)
  *   approving  -> approving   safe resume (recordApprovalAttempt)
- *   approving  -> approved    after Square returns a booking id
+ *   approving  -> approved    after Square returns ACCEPTED
+ *   approving  -> awaiting_square_acceptance  after Square returns PENDING
+ *   awaiting_square_acceptance -> approved     after Square retrieval returns ACCEPTED
+ *   awaiting_square_acceptance -> needs_reschedule  after Square retrieval returns declined/cancelled
  *   approving  -> needs_reschedule  slot no longer available (fresh claim only)
  *   approving  -> failed      Square/customer/server error (failure_code)
  *
@@ -109,6 +111,19 @@ function approvedOutcome(row, { bookingId, calendarUrl, confirmation, provider }
   };
 }
 
+function awaitingSquareAcceptanceOutcome(row) {
+  return {
+    status: "awaiting_square_acceptance",
+    requestId: row.id,
+    bookingId: row.squareBookingId || null,
+    serviceName: serviceNameFor(row),
+    startAt: row.startAt,
+    message:
+      "The appointment is pending acceptance in Square. Open Square Dashboard, accept the pending appointment, then return here and check its status.",
+    action: "check_square_status",
+  };
+}
+
 function declinedOutcome(row) {
   return {
     status: "declined",
@@ -146,7 +161,7 @@ async function handleSummary(req, res) {
   if (!row) {
     return res.status(404).json({ error: INVALID_OR_EXPIRED });
   }
-  if (row.status === "pending" || row.status === "approving") {
+  if (row.status === "pending" || row.status === "approving" || row.status === "awaiting_square_acceptance") {
     if (isTokenExpired(row)) {
       return res.status(404).json({ error: INVALID_OR_EXPIRED });
     }
@@ -163,7 +178,10 @@ async function handleSummary(req, res) {
   return res.status(200).json({
     requestId: row.id,
     status: row.status,
-    decided: row.status !== "pending" && row.status !== "approving",
+    decided:
+      row.status !== "pending" &&
+      row.status !== "approving" &&
+      row.status !== "awaiting_square_acceptance",
     firstName: row.firstName,
     lastName: row.lastName,
     email: row.email,
@@ -202,7 +220,7 @@ async function handleApprove(req, res) {
     return res.status(404).json({ error: INVALID_OR_EXPIRED });
   }
 
-  if (row.status === "pending" || row.status === "approving") {
+  if (row.status === "pending" || row.status === "approving" || row.status === "awaiting_square_acceptance") {
     if (isTokenExpired(row)) {
       return res.status(404).json({ error: INVALID_OR_EXPIRED });
     }
@@ -210,6 +228,9 @@ async function handleApprove(req, res) {
 
   if (row.status === "approved") {
     return res.status(200).json(await approvedIdempotentOutcome(store, row));
+  }
+  if (row.status === "awaiting_square_acceptance") {
+    return recheckSquareAcceptance(res, store, row);
   }
   if (row.status === "declined") {
     return res.status(200).json(declinedOutcome(row));
@@ -250,6 +271,9 @@ async function handleApprove(req, res) {
     }
     if (current.status === "approved") {
       return res.status(200).json(await approvedIdempotentOutcome(store, current));
+    }
+    if (current.status === "awaiting_square_acceptance") {
+      return recheckSquareAcceptance(res, store, current);
     }
     if (current.status === "declined") {
       return res.status(200).json(declinedOutcome(current));
@@ -337,7 +361,8 @@ async function performFreshApproval(req, res, store, row) {
 /**
  * Shared create-and-finalize used by both fresh approvals and resumes. Square
  * is called with the deterministic booking idempotency key; the result is
- * finalized to 'approved' BEFORE any email is sent.
+ * finalized to 'approved' BEFORE any email is sent, unless Square returns
+ * PENDING, in which case it is durably held as awaiting_square_acceptance.
  */
 async function createAndFinalize(req, res, store, row, serviceVariationVersion) {
   let client;
@@ -416,27 +441,33 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
 
   let response;
   try {
-    response = await client.bookings.create({
-      idempotencyKey: buildSquareIdempotencyKey(row.id),
-      booking: {
-        startAt: new Date(row.startAt).toISOString(),
-        locationId: config.locationId,
-        customerId,
-        sellerNote: `Kai Lani website approval request: ${requestReference(row.id)}`,
-        appointmentSegments: [
-          {
-            durationMinutes: config.service.durationMinutes,
-            serviceVariationId: config.service.serviceVariationId,
-            teamMemberId: config.teamMemberId,
-            serviceVariationVersion,
-          },
-        ],
+    response = await client.bookings.create(
+      {
+        idempotencyKey: buildSquareIdempotencyKey(row.id),
+        booking: {
+          startAt: new Date(row.startAt).toISOString(),
+          locationId: config.locationId,
+          customerId,
+          appointmentSegments: [
+            {
+              durationMinutes: config.service.durationMinutes,
+              serviceVariationId: config.service.serviceVariationId,
+              teamMemberId: config.teamMemberId,
+              serviceVariationVersion,
+            },
+          ],
+        },
       },
-    });
+      { queryParams: { seller_level: false } },
+    );
   } catch (error) {
-    await store.markFailed({ id: row.id, failureCode: "square_error" });
-    console.error(`Booking request square create failed status=${squareErrorStatus(error)}`);
     const status = squareErrorStatus(error);
+    if (status === 429 || status >= 500) {
+      console.error(`Booking request square create retryable status=${status}`);
+      return res.status(status).json({ error: clientFacingMessage(status) });
+    }
+    await store.markFailed({ id: row.id, failureCode: "square_error" });
+    console.error(`Booking request square create failed status=${status}`);
     return res.status(status).json({ error: clientFacingMessage(status) });
   }
 
@@ -449,16 +480,36 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
       .json({ error: "Could not approve the appointment right now. Please try again." });
   }
 
-  const calendarUrl = buildApprovedCalendarUrlFor(row, booking.id);
-  const updated = await store.markApproved({
+  const bookingStatus = booking.status || "PENDING";
+  const squareFields = {
     id: row.id,
     squareCustomerId: customerId,
     squareBookingId: booking.id,
     squareBookingVersion: booking.version,
-    squareBookingStatus: booking.status || "PENDING",
+    squareBookingStatus: bookingStatus,
     squareServiceVariationId: config.service.serviceVariationId,
     squareLocationId: config.locationId,
     squareTeamMemberId: config.teamMemberId,
+  };
+
+  if (bookingStatus !== "ACCEPTED") {
+    const awaiting = await store.markAwaitingSquareAcceptance(squareFields);
+    const current = awaiting || (await store.getRequestById(row.id));
+    if (!current) {
+      return res
+        .status(500)
+        .json({ error: "Could not approve the appointment right now. Please try again." });
+    }
+    if (current.status === "approved") {
+      return res.status(200).json(await approvedIdempotentOutcome(store, current));
+    }
+    console.info(`Booking request bookingSuffix=${booking.id.slice(-6)} status=square_pending`);
+    return res.status(200).json(awaitingSquareAcceptanceOutcome(current));
+  }
+
+  const calendarUrl = buildApprovedCalendarUrlFor(row, booking.id);
+  const updated = await store.markApproved({
+    ...squareFields,
     calendarUrl,
   });
 
@@ -486,18 +537,6 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
 
   await store.backfillSubscriptionCustomer(updated.email, customerId);
 
-  if (booking.status !== "ACCEPTED") {
-    console.info(
-      `Booking request bookingSuffix=${booking.id.slice(-6)} status=square_pending`,
-    );
-    return res.status(200).json(approvedOutcome(updated, {
-      bookingId: booking.id,
-      calendarUrl,
-      confirmation: "none",
-      provider: "none",
-    }));
-  }
-
   const appointment = appointmentFor(updated, booking.id);
   const confirmedCalendarUrl = buildGoogleCalendarUrl(appointment);
   const { confirmation, provider } = await ensureConfirmationsSent(
@@ -513,6 +552,89 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
     confirmation,
     provider,
   }));
+}
+
+async function recheckSquareAcceptance(res, store, row) {
+  if (!row.squareBookingId) {
+    await store.markFailed({ id: row.id, failureCode: "booking_missing" });
+    return res.status(200).json(failedOutcome({ ...row, failureCode: "booking_missing" }));
+  }
+
+  let client;
+  try {
+    client = getSquareClient();
+  } catch {
+    return res
+      .status(500)
+      .json({ error: "Could not check Square status right now. Please try again." });
+  }
+
+  let response;
+  try {
+    response = await client.bookings.get({ bookingId: row.squareBookingId });
+  } catch (error) {
+    console.error(`Booking request square retrieve failed status=${squareErrorStatus(error)}`);
+    return res
+      .status(squareErrorStatus(error))
+      .json({ error: "Could not check Square status right now. Please try again." });
+  }
+
+  const booking = response.booking;
+  if (!booking || !booking.id) {
+    console.error("Booking request square retrieve returned no booking");
+    return res.status(500).json({ error: "Could not check Square status right now. Please try again." });
+  }
+
+  const status = booking.status || row.squareBookingStatus || "PENDING";
+  const version = booking.version ?? row.squareBookingVersion;
+
+  if (status === "PENDING") {
+    await store.updateAwaitingSquareAcceptance({
+      id: row.id,
+      squareBookingVersion: version,
+      squareBookingStatus: status,
+    });
+    return res.status(200).json(awaitingSquareAcceptanceOutcome({
+      ...row,
+      squareBookingVersion: version == null ? row.squareBookingVersion : Number(version),
+      squareBookingStatus: status,
+    }));
+  }
+
+  if (status === "ACCEPTED") {
+    const acceptedRow = await store.markApproved({
+      id: row.id,
+      squareCustomerId: booking.customerId || row.squareCustomerId,
+      squareBookingId: booking.id,
+      squareBookingVersion: version,
+      squareBookingStatus: status,
+      squareServiceVariationId: booking.appointmentSegments?.[0]?.serviceVariationId || row.squareServiceVariationId,
+      squareLocationId: booking.locationId || row.squareLocationId,
+      squareTeamMemberId: booking.appointmentSegments?.[0]?.teamMemberId || row.squareTeamMemberId,
+      calendarUrl: buildApprovedCalendarUrlFor(row, booking.id),
+    });
+    const current = acceptedRow || (await store.getRequestById(row.id));
+    if (!current) {
+      return res.status(500).json({ error: "Could not check Square status right now. Please try again." });
+    }
+    return res.status(200).json(await approvedIdempotentOutcome(store, current));
+  }
+
+  if (isSquareTerminalStatus(status)) {
+    const terminal = await store.markSquareAcceptanceTerminal({
+      id: row.id,
+      squareBookingVersion: version,
+      squareBookingStatus: status,
+    });
+    return res.status(200).json(needsRescheduleOutcome(terminal || row, { emailStatus: "none" }));
+  }
+
+  console.error("Booking request square retrieve returned unsupported status");
+  return res.status(500).json({ error: "Could not check Square status right now. Please try again." });
+}
+
+function isSquareTerminalStatus(status) {
+  return status === "DECLINED" || status === "CANCELLED_BY_CUSTOMER" || status === "CANCELLED_BY_SELLER";
 }
 
 /**
@@ -623,8 +745,8 @@ class CustomerCreateError extends Error {
  *  - email and phone resolve to DIFFERENT customers -> stop for manual review
  *  - neither resolves -> create exactly one customer with a deterministic
  *    idempotency key so retries never create duplicates
- * No Customer Directory note is ever written, and no health/medical note is
- * added. The Square seller_note remains a safe website request reference.
+ * No Customer Directory note, Square seller_note, or health/medical note is
+ * written.
  */
 async function findOrCreateCustomer(client, { requestId, firstName, lastName, email, phone }) {
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";

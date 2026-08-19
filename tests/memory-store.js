@@ -8,7 +8,7 @@ import { generateApprovalToken, hashToken } from "../lib/tokens.js";
  * interface as lib/store.js NeonStore, including the state machine and the
  * invariants the database enforces:
  *   - request_key is unique (duplicate_request_key)
- *   - only ACTIVE (pending/approving) requests hold their time window
+   *   - only ACTIVE (pending/approving/awaiting_square_acceptance) requests hold their time window
  *   - transitions are atomic guards on status (pending->approving,
  *     approving->approved/needs_reschedule/failed, pending->declined/expired)
  *   - approval-token expiry is honored; the sweep releases holds
@@ -26,7 +26,7 @@ export class MemoryBookingRequestStore {
   }
 
   _active(status) {
-    return status === "pending" || status === "approving";
+    return status === "pending" || status === "approving" || status === "awaiting_square_acceptance";
   }
 
   _overlapConflict(startAt, durationMinutes) {
@@ -263,9 +263,60 @@ export class MemoryBookingRequestStore {
 
   async recordApprovalAttempt(id) {
     const row = this._findById(id);
-    if (!row || row.status !== "approving") return null;
+    if (!row || (row.status !== "approving" && row.status !== "awaiting_square_acceptance")) return null;
     row.approvalStartedAt = new Date();
     row.approvalAttemptCount += 1;
+    row.updatedAt = new Date();
+    return this._row(row.id);
+  }
+
+  async markAwaitingSquareAcceptance({
+    id,
+    squareCustomerId,
+    squareBookingId,
+    squareBookingVersion,
+    squareBookingStatus,
+    squareServiceVariationId,
+    squareLocationId,
+    squareTeamMemberId,
+  }) {
+    const row = this._findById(id);
+    if (!row || row.status !== "approving") return null;
+    row.status = "awaiting_square_acceptance";
+    row.squareCustomerId = squareCustomerId;
+    row.squareBookingId = squareBookingId;
+    row.squareBookingVersion = squareBookingVersion == null ? null : Number(squareBookingVersion);
+    row.squareBookingStatus = squareBookingStatus;
+    row.squareServiceVariationId = squareServiceVariationId || null;
+    row.squareLocationId = squareLocationId || null;
+    row.squareTeamMemberId = squareTeamMemberId || null;
+    row.squareSyncStatus = "creating";
+    row.squareLastSyncedAt = new Date();
+    row.calendarUrl = null;
+    row.updatedAt = new Date();
+    return this._row(row.id);
+  }
+
+  async updateAwaitingSquareAcceptance({ id, squareBookingVersion, squareBookingStatus }) {
+    const row = this._findById(id);
+    if (!row || row.status !== "awaiting_square_acceptance") return null;
+    row.squareBookingVersion = squareBookingVersion == null ? null : Number(squareBookingVersion);
+    row.squareBookingStatus = squareBookingStatus;
+    row.squareSyncStatus = "creating";
+    row.squareLastSyncedAt = new Date();
+    row.updatedAt = new Date();
+    return this._row(row.id);
+  }
+
+  async markSquareAcceptanceTerminal({ id, squareBookingVersion, squareBookingStatus }) {
+    const row = this._findById(id);
+    if (!row || row.status !== "awaiting_square_acceptance") return null;
+    row.status = "needs_reschedule";
+    row.squareBookingVersion = squareBookingVersion == null ? null : Number(squareBookingVersion);
+    row.squareBookingStatus = squareBookingStatus;
+    row.squareSyncStatus = "canceled";
+    row.squareLastSyncedAt = new Date();
+    row.decidedAt = new Date();
     row.updatedAt = new Date();
     return this._row(row.id);
   }
@@ -282,7 +333,7 @@ export class MemoryBookingRequestStore {
     calendarUrl,
   }) {
     const row = this._findById(id);
-    if (!row || row.status !== "approving") return null;
+    if (!row || (row.status !== "approving" && row.status !== "awaiting_square_acceptance")) return null;
     row.status = "approved";
     row.squareCustomerId = squareCustomerId;
     row.squareBookingId = squareBookingId;

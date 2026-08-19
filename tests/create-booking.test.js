@@ -101,8 +101,8 @@ function makeEchoAvailabilityMock(createLog = []) {
           },
         ],
       }),
-      create: async (request) => {
-        createLog.push(request);
+      create: async (request, requestOptions) => {
+        createLog.push({ ...request, requestOptions });
         return {
           booking: {
             id: "BK_123",
@@ -195,6 +195,7 @@ test("internal engine creates a booking and returns only the safe confirmation s
   assert.deepEqual(result.notification, { client: "disabled", provider: "disabled" });
   assert.equal(createLog.length, 1);
   assert.equal(createLog[0].idempotencyKey, "idem-test-0001");
+  assert.deepEqual(createLog[0].requestOptions, { queryParams: { seller_level: false } });
   assert.equal(createLog[0].booking.appointmentSegments[0].serviceVariationId, "VAR_CUSTOMIZED_60");
   assert.equal(createLog[0].booking.appointmentSegments[0].teamMemberId, "TM_CHELSEA");
   assert.equal(createLog[0].booking.appointmentSegments[0].serviceVariationVersion, 1785474196673n);
