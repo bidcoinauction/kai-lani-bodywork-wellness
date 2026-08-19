@@ -239,6 +239,25 @@ export class MemoryBookingRequestStore {
     await this._updateEmailStatus(id, "providerConfirmationEmailStatus", status);
   }
 
+  async _claimEmailSend(id, field) {
+    const row = this._findById(String(id));
+    if (!row || row[field] === "sent") return false;
+    if (row[field] === "sending" && row.updatedAt.getTime() > Date.now() - 5 * 60 * 1000) {
+      return false;
+    }
+    row[field] = "sending";
+    row.updatedAt = new Date();
+    return true;
+  }
+
+  async claimConfirmationEmailSend(id) {
+    return this._claimEmailSend(id, "confirmationEmailStatus");
+  }
+
+  async claimProviderConfirmationEmailSend(id) {
+    return this._claimEmailSend(id, "providerConfirmationEmailStatus");
+  }
+
   async setDeclineEmailStatus(id, status) {
     await this._updateEmailStatus(id, "declineEmailStatus", status);
   }

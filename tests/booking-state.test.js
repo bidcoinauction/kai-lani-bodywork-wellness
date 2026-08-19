@@ -210,7 +210,7 @@ test("resuming an approving request reuses the deterministic booking key and nev
   // catalog (availability is deliberately not re-checked), and that version
   // must be preserved into the Square create call.
   assert.equal(state.catalogGetCalls.length, 1);
-  assert.equal(state.createCalls[1].booking.appointmentSegments[0].serviceVariationVersion, 3);
+  assert.equal(state.createCalls[1].booking.appointmentSegments[0].serviceVariationVersion, 3n);
 
   const clientEmails = emails.filter((c) =>
     String(c.body.subject).includes("appointment is confirmed"),
@@ -236,7 +236,7 @@ test("resuming an approving request preserves a catalog version of 0 (valid, not
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   assert.equal(res.body.status, "approved");
   assert.equal(state.catalogGetCalls.length, 1);
-  assert.equal(state.createCalls[state.createCalls.length - 1].booking.appointmentSegments[0].serviceVariationVersion, 0);
+  assert.equal(state.createCalls[state.createCalls.length - 1].booking.appointmentSegments[0].serviceVariationVersion, 0n);
   assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
 });
 
@@ -272,7 +272,7 @@ test("fresh approval preserves an availability version of 0 into the create", as
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   assert.equal(res.body.status, "approved");
   assert.equal(state.catalogGetCalls.length, 0, "fresh path must not need the catalog");
-  assert.equal(state.createCalls[state.createCalls.length - 1].booking.appointmentSegments[0].serviceVariationVersion, 0);
+  assert.equal(state.createCalls[state.createCalls.length - 1].booking.appointmentSegments[0].serviceVariationVersion, 0n);
   assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
 });
 
@@ -411,6 +411,31 @@ test("declined or cancelled Square booking becomes terminal without confirmation
   assert.equal(emails.filter((c) => /appointment is confirmed|Appointment approved/.test(String(c.body.subject))).length, 0);
 });
 
+test("decline is rejected while awaiting Square acceptance and keeps the local hold", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock({ bookingStatus: "PENDING" });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+
+  const decline = await post(declineHandler, { token });
+  assert.equal(decline.statusCode, 409);
+  assert.equal(decline.body.status, "awaiting_square_acceptance");
+  assert.match(decline.body.error, /pending acceptance in Square/i);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "awaiting_square_acceptance");
+
+  const overlap = await post(
+    bookingRequestsHandler,
+    makeBody({ requestKey: "req_test_decline_awaiting_hold" }),
+  );
+  assert.equal(overlap.statusCode, 409);
+  assert.equal(emails.filter((c) => /appointment is confirmed|Appointment approved/.test(String(c.body.subject))).length, 0);
+});
+
 test("transient retrieve failure preserves awaiting state and stored Square ids", async () => {
   installGateEnv();
   installEmailEnv();
@@ -434,6 +459,115 @@ test("transient retrieve failure preserves awaiting state and stored Square ids"
   assert.equal(row.squareCustomerId, "CUST_APPROVE_1");
   assert.equal(state.createCalls.length, 1);
   assert.equal(state.getCalls.length, 1);
+});
+
+test("awaiting_square_acceptance recheck remains usable after original token TTL", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const createdBooking = { booking: { id: "BK_PENDING_ACCEPT", status: "PENDING", version: 0 } };
+  const { client } = makeSquareMock({ bookingsCreate: async () => createdBooking });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  await store.setApprovalTokenExpiry(a.body.requestId, new Date(Date.now() - 1000));
+  createdBooking.booking.status = "ACCEPTED";
+
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, "approved");
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
+});
+
+test("awaiting_square_acceptance expired recheck window gives operator recovery guidance without Square retrieval", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({ bookingStatus: "PENDING" });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  const row = store._findById(a.body.requestId);
+  row.approvalStartedAt = new Date(Date.now() - 15 * 86400000);
+
+  const res = await post(approveHandler, { token });
+  const summary = await get(approveHandler, { token });
+
+  assert.equal(res.statusCode, 410);
+  assert.equal(summary.statusCode, 410);
+  assert.equal(res.body.status, "awaiting_square_acceptance");
+  assert.equal(res.body.expired, true);
+  assert.match(res.body.message, /Square Dashboard/i);
+  assert.match(res.body.message, /manually/i);
+  assert.equal(state.getCalls.length, 0);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "awaiting_square_acceptance");
+});
+
+test("pre-approval expired token still cannot create a Square booking", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock();
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await store.setApprovalTokenExpiry(a.body.requestId, new Date(Date.now() - 1000));
+
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(state.createCalls.length, 0);
+});
+
+test("recheck fails closed when Square returns a different booking id", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock({ bookingStatus: "PENDING" });
+  client.bookings.get = async () => ({ booking: { id: "BK_DIFFERENT", status: "ACCEPTED", version: 2 } });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 500);
+  const row = await store.getRequestById(a.body.requestId);
+  assert.equal(row.status, "awaiting_square_acceptance");
+  assert.equal(row.squareBookingId, "BK_APPROVED_1");
+});
+
+test("simultaneous accepted rechecks finalize once and do not duplicate confirmations", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const createdBooking = { booking: { id: "BK_PENDING_RACE", status: "PENDING", version: 0 } };
+  const { client, state } = makeSquareMock({ bookingsCreate: async () => createdBooking });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  await post(approveHandler, { token });
+  createdBooking.booking.status = "ACCEPTED";
+
+  const [first, second] = await Promise.all([
+    post(approveHandler, { token }),
+    post(approveHandler, { token }),
+  ]);
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "approved");
+  assert.equal(state.createCalls.length, 1);
+  assert.equal(emails.filter((c) => String(c.body.subject).includes("appointment is confirmed")).length, 1);
+  assert.equal(emails.filter((c) => String(c.body.subject).includes("Appointment approved")).length, 1);
 });
 
 test("fresh approval fails closed when availability lacks a version (never calls Square create)", async () => {

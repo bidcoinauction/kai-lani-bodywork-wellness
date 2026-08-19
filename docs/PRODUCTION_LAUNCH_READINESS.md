@@ -282,6 +282,15 @@ Current protections (verified in SANDBOX):
 - Rechecking an `awaiting_square_acceptance` row is a POST to the existing
   approval endpoint with the same token. It retrieves the persisted Square
   booking by ID and never calls `CreateBooking` again.
+- After Square has created the pending booking, the approval token remains
+  usable for Square-status rechecks for 14 days from the approval attempt. This
+  is intentionally broader than the initial approval TTL so an accepted Square
+  booking is not stranded before Chelsea can click `Check Square status`; it is
+  still limited and still requires the same unguessable token.
+- If that 14-day status-check window expires, the website does not retrieve
+  Square or send confirmations. The approval page tells Chelsea to review the
+  appointment in Square Dashboard and handle client communication manually; the
+  local hold remains until an explicit operational cleanup is chosen.
 - Idempotent approve and client/server retry paths reuse deterministic Square
   keys; no duplicate customer/booking is created.
 - Referrer policy `no-referrer` on `index.html:6` prevents approval tokens from

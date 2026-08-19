@@ -23,6 +23,7 @@ import { getServiceConfig } from "../../../lib/services.js";
 
 const INVALID_OR_EXPIRED = "This approval link is invalid or has expired.";
 const TOKEN_REQUIRED = "An approval token is required.";
+const AWAITING_RECHECK_TTL_DAYS = 14;
 const CUSTOMER_CONFLICT_MESSAGE =
   "The email and phone resolve to different customer profiles. Manual review is required before this request can be approved.";
 
@@ -84,6 +85,24 @@ function isTokenExpired(row) {
   return new Date(row.approvalTokenExpiresAt).getTime() <= Date.now();
 }
 
+function isAwaitingRecheckExpired(row) {
+  if (!row.approvalStartedAt) return true;
+  return new Date(row.approvalStartedAt).getTime() + AWAITING_RECHECK_TTL_DAYS * 86400000 <= Date.now();
+}
+
+function isApprovalAccessExpired(row) {
+  if (row.status === "awaiting_square_acceptance") return isAwaitingRecheckExpired(row);
+  return isTokenExpired(row);
+}
+
+function squareVersionForCreate(version) {
+  if (typeof version === "bigint") return version;
+  if (typeof version === "number" && Number.isSafeInteger(version) && version >= 0) {
+    return BigInt(version);
+  }
+  return version;
+}
+
 function serviceNameFor(row) {
   const service = getServiceConfig(row.serviceKey);
   return service ? service.name : row.serviceKey;
@@ -124,6 +143,17 @@ function awaitingSquareAcceptanceOutcome(row) {
   };
 }
 
+function awaitingRecheckExpiredResponse(row) {
+  return {
+    status: "awaiting_square_acceptance",
+    requestId: row.id,
+    bookingId: row.squareBookingId || null,
+    expired: true,
+    message:
+      "This Square status-check window has expired. Review the pending appointment in Square Dashboard and handle any client communication manually.",
+  };
+}
+
 function declinedOutcome(row) {
   return {
     status: "declined",
@@ -161,8 +191,11 @@ async function handleSummary(req, res) {
   if (!row) {
     return res.status(404).json({ error: INVALID_OR_EXPIRED });
   }
-  if (row.status === "pending" || row.status === "approving" || row.status === "awaiting_square_acceptance") {
-    if (isTokenExpired(row)) {
+  if (row.status === "awaiting_square_acceptance" && isAwaitingRecheckExpired(row)) {
+    return res.status(410).json(awaitingRecheckExpiredResponse(row));
+  }
+  if (row.status === "pending" || row.status === "approving") {
+    if (isApprovalAccessExpired(row)) {
       return res.status(404).json({ error: INVALID_OR_EXPIRED });
     }
   }
@@ -220,8 +253,11 @@ async function handleApprove(req, res) {
     return res.status(404).json({ error: INVALID_OR_EXPIRED });
   }
 
-  if (row.status === "pending" || row.status === "approving" || row.status === "awaiting_square_acceptance") {
-    if (isTokenExpired(row)) {
+  if (row.status === "awaiting_square_acceptance" && isAwaitingRecheckExpired(row)) {
+    return res.status(410).json(awaitingRecheckExpiredResponse(row));
+  }
+  if (row.status === "pending" || row.status === "approving") {
+    if (isApprovalAccessExpired(row)) {
       return res.status(404).json({ error: INVALID_OR_EXPIRED });
     }
   }
@@ -453,7 +489,7 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
               durationMinutes: config.service.durationMinutes,
               serviceVariationId: config.service.serviceVariationId,
               teamMemberId: config.teamMemberId,
-              serviceVariationVersion,
+              serviceVariationVersion: squareVersionForCreate(serviceVariationVersion),
             },
           ],
         },
@@ -588,6 +624,11 @@ async function recheckSquareAcceptance(res, store, row) {
   const status = booking.status || row.squareBookingStatus || "PENDING";
   const version = booking.version ?? row.squareBookingVersion;
 
+  if (booking.id !== row.squareBookingId) {
+    console.error("Booking request square retrieve id mismatch");
+    return res.status(500).json({ error: "Could not check Square status right now. Please try again." });
+  }
+
   if (status === "PENDING") {
     await store.updateAwaitingSquareAcceptance({
       id: row.id,
@@ -675,20 +716,30 @@ async function ensureConfirmationsSent(store, row, bookingId, calendarUrl) {
   let confirmation = row.confirmationEmailStatus;
   let provider = row.providerConfirmationEmailStatus;
   if (confirmation !== "sent") {
-    confirmation = await sendApprovedClientEmail({
-      ...requestEmailData(row),
-      bookingId,
-      calendarUrl,
-    });
-    await store.setConfirmationEmailStatus(row.id, confirmation);
+    const claimed = await store.claimConfirmationEmailSend(row.id);
+    if (claimed) {
+      confirmation = await sendApprovedClientEmail({
+        ...requestEmailData(row),
+        bookingId,
+        calendarUrl,
+      });
+      await store.setConfirmationEmailStatus(row.id, confirmation);
+    } else {
+      confirmation = (await store.getRequestById(row.id))?.confirmationEmailStatus || confirmation;
+    }
   }
   if (provider !== "sent") {
-    provider = await sendApprovedProviderEmail({
-      ...requestEmailData(row),
-      bookingId,
-      calendarUrl,
-    });
-    await store.setProviderConfirmationEmailStatus(row.id, provider);
+    const claimed = await store.claimProviderConfirmationEmailSend(row.id);
+    if (claimed) {
+      provider = await sendApprovedProviderEmail({
+        ...requestEmailData(row),
+        bookingId,
+        calendarUrl,
+      });
+      await store.setProviderConfirmationEmailStatus(row.id, provider);
+    } else {
+      provider = (await store.getRequestById(row.id))?.providerConfirmationEmailStatus || provider;
+    }
   }
   return { confirmation, provider };
 }

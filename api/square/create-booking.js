@@ -87,7 +87,7 @@ export async function createBookingFlow({
             durationMinutes: config.service.durationMinutes,
             serviceVariationId: config.service.serviceVariationId,
             teamMemberId: config.teamMemberId,
-            serviceVariationVersion,
+            serviceVariationVersion: squareVersionForCreate(serviceVariationVersion),
           },
         ],
       },
@@ -125,6 +125,14 @@ export async function createBookingFlow({
   }
 
   return safeResponse;
+}
+
+function squareVersionForCreate(version) {
+  if (typeof version === "bigint") return version;
+  if (typeof version === "number" && Number.isSafeInteger(version) && version >= 0) {
+    return BigInt(version);
+  }
+  return version;
 }
 
 class HttpError extends Error {

@@ -5,7 +5,7 @@ workflow (Option A)**. No invoice or payment code exists in this task, and no
 automation is implemented. All Square capability facts below were verified
 against the official Square Invoices API documentation
 (developer.squareup.com) and the installed `square` SDK (v44.2.1,
-`/node_modules/square/api/types/*`).
+`/node_modules/square/api/resources/*` and `/node_modules/square/BaseClient.d.ts`).
 
 ## 1. Current State
 
@@ -259,11 +259,12 @@ app before the first client invoice:
 - whether Square supports a reusable invoice template that contains the license
   text (so the text is not typed on every invoice)
 
-## 14. Unchanged Behavior
+## 14. Related Behavior
 
-- **Booking approval and Google Calendar behavior remain unchanged.** Approval,
-  confirmation emails, `.ics` attachment, and Google Calendar link work exactly
-  as today.
+- **Booking approval uses the Square Free two-stage path.** Chelsea approves the
+  request, accepts the pending booking in Square Dashboard, then clicks `Check
+  Square status`; only the accepted Square booking sends confirmation emails,
+  `.ics` attachment, and Google Calendar link.
 - **QStash / webhook reconciliation remains disabled and is not required for
   manual invoicing.** No webhook needs to be enabled for Chelsea to create and
   send an invoice manually, and this task does not enable or depend on webhooks.

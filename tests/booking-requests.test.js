@@ -368,7 +368,7 @@ test("approve creates the Square booking with a deterministic idempotency key an
   assert.equal("sellerNote" in state.createCalls[0].booking, false);
   assert.equal(
     createReq.booking.appointmentSegments[0].serviceVariationVersion,
-    3,
+    3n,
     "fresh approval preserves the availability-sourced version into the create",
   );
   assert.deepEqual(createReq.requestOptions, { queryParams: { seller_level: false } });
