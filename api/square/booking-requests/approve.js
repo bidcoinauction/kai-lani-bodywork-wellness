@@ -120,7 +120,8 @@ function appointmentFor(row, bookingId) {
 function approvedOutcome(row, { bookingId, calendarUrl, confirmation, provider }) {
   return {
     status: "approved",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     bookingId,
     calendarUrl,
     serviceName: serviceNameFor(row),
@@ -133,7 +134,8 @@ function approvedOutcome(row, { bookingId, calendarUrl, confirmation, provider }
 function awaitingSquareAcceptanceOutcome(row) {
   return {
     status: "awaiting_square_acceptance",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     bookingId: row.squareBookingId || null,
     serviceName: serviceNameFor(row),
     startAt: row.startAt,
@@ -146,7 +148,8 @@ function awaitingSquareAcceptanceOutcome(row) {
 function awaitingRecheckExpiredResponse(row) {
   return {
     status: "awaiting_square_acceptance",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     bookingId: row.squareBookingId || null,
     expired: true,
     message:
@@ -157,7 +160,8 @@ function awaitingRecheckExpiredResponse(row) {
 function declinedOutcome(row) {
   return {
     status: "declined",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     message: "This appointment request was declined.",
   };
 }
@@ -165,7 +169,8 @@ function declinedOutcome(row) {
 function needsRescheduleOutcome(row, { emailStatus }) {
   return {
     status: "needs_reschedule",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     message: "That time is no longer available. The client has been asked to request a new time.",
     notification: { needsReschedule: emailStatus },
   };
@@ -174,7 +179,8 @@ function needsRescheduleOutcome(row, { emailStatus }) {
 function failedOutcome(row) {
   return {
     status: "failed",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     failureCode: row.failureCode || null,
     message: "This appointment request could not be processed.",
   };
@@ -209,7 +215,8 @@ async function handleSummary(req, res) {
   }
 
   return res.status(200).json({
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     status: row.status,
     decided:
       row.status !== "pending" &&
@@ -759,7 +766,7 @@ function buildApprovedCalendarUrlFor(row, bookingId) {
 
 function requestEmailData(row) {
   return {
-    requestId: row.id,
+    requestId: row.requestKey,
     requestKey: row.requestKey,
     serviceKey: row.serviceKey,
     serviceName: serviceNameFor(row),

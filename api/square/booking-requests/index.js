@@ -82,7 +82,7 @@ async function handleGetStatus(req, res) {
   }
 
   return res.status(200).json({
-    requestId: row.id,
+    requestId: row.requestKey,
     requestKey: row.requestKey,
     status: row.status,
     decidedAt: row.decidedAt || null,
@@ -139,7 +139,7 @@ async function handleCreate(req, res) {
           await recordMarketingConsent(store, input.email);
         }
         return res.status(200).json({
-          requestId: existing.id,
+          requestId: existing.requestKey,
           requestKey: existing.requestKey,
           status: existing.status,
           message: replayMessage(existing.status),
@@ -206,7 +206,7 @@ async function handleCreate(req, res) {
   }
 
   const request = {
-    requestId: row.id,
+    requestId: row.requestKey,
     requestKey: row.requestKey,
     serviceKey: row.serviceKey,
     serviceName: input.serviceName,
@@ -234,7 +234,7 @@ async function handleCreate(req, res) {
   await store.setApprovalEmailStatus(row.id, approval);
 
   return res.status(201).json({
-    requestId: row.id,
+    requestId: row.requestKey,
     requestKey: row.requestKey,
     status: row.status,
     message: PENDING_MESSAGE,

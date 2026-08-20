@@ -7,6 +7,7 @@ import {
   bookingRequestsEnabled,
   legacySandboxFlagPresent,
 } from "../src/lib/booking-flag.js";
+import { publicRequestReference } from "../src/lib/request-reference.js";
 
 const SRC_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 
@@ -73,4 +74,39 @@ test("rendered booking UI source contains no Sandbox or test-bookings wording", 
       `${file} must not contain Sandbox/test-bookings UI wording`,
     );
   }
+});
+
+test("booking and approval screens label the persisted request key as the request reference", () => {
+  const bookingSource = fs.readFileSync(
+    path.join(SRC_ROOT, "components", "calendar", "SquareBooking.jsx"),
+    "utf8",
+  );
+  const approvalSource = fs.readFileSync(
+    path.join(SRC_ROOT, "components", "ApprovalPage.jsx"),
+    "utf8",
+  );
+
+  assert.equal(
+    publicRequestReference({
+      requestId: "11111111-1111-4111-8111-111111111111",
+      requestKey: "22222222-2222-4222-8222-222222222222",
+    }),
+    "22222222-2222-4222-8222-222222222222",
+  );
+  assert.equal(publicRequestReference({ requestId: "legacy-public-reference" }), "legacy-public-reference");
+  assert.match(bookingSource, /publicRequestReference\(bookingResult\)/);
+  assert.match(approvalSource, /publicRequestReference\(request\)/);
+  assert.doesNotMatch(bookingSource, /<dd>\{bookingResult\.requestId\}<\/dd>/);
+  assert.doesNotMatch(approvalSource, /<dd>\{request\.requestId\}<\/dd>/);
+});
+
+test("booking source clears stale result state before a second submission", () => {
+  const bookingSource = fs.readFileSync(
+    path.join(SRC_ROOT, "components", "calendar", "SquareBooking.jsx"),
+    "utf8",
+  );
+  assert.match(
+    bookingSource,
+    /setSubmitting\(true\);\s*setBookingError\(null\);\s*setBookingResult\(null\);/,
+  );
 });

@@ -16,6 +16,7 @@ import {
   setBookingRequestStoreForTests,
   resetBookingRequestStoreForTests,
 } from "../lib/store.js";
+import { publicRequestReference } from "../src/lib/request-reference.js";
 
 const REQUEST_KEY = "req_test_abcdef123456";
 const BASE_URL = "https://preview.example.invalid";
@@ -221,6 +222,8 @@ test("create stores a pending request, returns the required wording, and never l
     "Your appointment request was sent. Chelsea will review your requested time. Your appointment is not confirmed until you receive an approval email.",
   );
   assert.ok(res.body.requestId);
+  assert.equal(res.body.requestId, REQUEST_KEY);
+  assert.equal(res.body.requestKey, REQUEST_KEY);
   assert.equal(res.body.notification.requestReceipt, "sent");
   assert.equal(res.body.notification.approval, "sent");
   assert.equal(state.availabilityCalls, 1);
@@ -329,15 +332,88 @@ test("GET status and lookup return safe request details without the token", asyn
   assert.equal(status.statusCode, 200);
   assert.equal(status.body.status, "pending");
   assert.equal(status.body.requestId, created.body.requestId);
+  assert.equal(status.body.requestKey, REQUEST_KEY);
   assert.doesNotMatch(JSON.stringify(status.body), /token/i);
 
   const lookup = await get(lookupHandler, { requestKey: REQUEST_KEY });
   assert.equal(lookup.statusCode, 200);
+  assert.equal(lookup.body.requestId, REQUEST_KEY);
+  assert.equal(lookup.body.requestKey, REQUEST_KEY);
   assert.equal(lookup.body.serviceName, "60 Min Customized Massage");
   assert.equal(lookup.body.durationMinutes, 60);
   assert.equal(lookup.body.emailStatuses.requestReceipt, "sent");
   assert.equal(lookup.body.emailStatuses.approval, "sent");
   assert.doesNotMatch(JSON.stringify(lookup.body), /approval_token_hash|token/i);
+});
+
+test("public request reference is the persisted request key through create, lookup, pending, and approved states", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const frontendKey = "33333333-3333-4333-8333-333333c0ffee";
+  const approvalTokenSentinel = "approval-token-must-not-appear";
+  const squareBookingId = "BK_APPROVED_1";
+  const { client } = makeSquareMock({
+    bookingStatus: "PENDING",
+    bookingsCreate: async () => ({
+      booking: { id: squareBookingId, status: "PENDING", version: 0 },
+    }),
+  });
+  client.bookings.get = async () => ({
+    booking: { id: squareBookingId, status: "ACCEPTED", version: 0 },
+  });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const created = await post(bookingRequestsHandler, makeBody({ requestKey: frontendKey }));
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.body.requestKey, frontendKey);
+  assert.equal(created.body.requestId, frontendKey);
+  assert.equal(publicRequestReference(created.body), frontendKey);
+  assert.doesNotMatch(JSON.stringify(created.body), new RegExp(approvalTokenSentinel, "i"));
+
+  const stored = await store.getRequestByKey(frontendKey);
+  assert.ok(stored?.id);
+  assert.notEqual(stored.id, frontendKey);
+  assert.doesNotMatch(JSON.stringify(created.body), new RegExp(stored.id, "i"));
+
+  const lookup = await get(lookupHandler, { requestKey: frontendKey });
+  assert.equal(lookup.statusCode, 200);
+  assert.equal(lookup.body.requestKey, frontendKey);
+  assert.equal(lookup.body.requestId, frontendKey);
+  assert.equal(publicRequestReference(lookup.body), frontendKey);
+  assert.doesNotMatch(JSON.stringify(lookup.body), new RegExp(stored.id, "i"));
+
+  const token = approvalTokenFromEmails(emails);
+  assert.ok(token);
+  const summary = await get(approveHandler, { token });
+  assert.equal(summary.statusCode, 200);
+  assert.equal(summary.body.requestKey, frontendKey);
+  assert.equal(summary.body.requestId, frontendKey);
+  assert.equal(publicRequestReference(summary.body), frontendKey);
+
+  const pending = await post(approveHandler, { token });
+  assert.equal(pending.statusCode, 200);
+  assert.equal(pending.body.status, "awaiting_square_acceptance");
+  assert.equal(pending.body.requestKey, frontendKey);
+  assert.equal(pending.body.requestId, frontendKey);
+  assert.equal(publicRequestReference(pending.body), frontendKey);
+
+  const approved = await post(approveHandler, { token });
+  assert.equal(approved.statusCode, 200);
+  assert.equal(approved.body.status, "approved");
+  assert.equal(approved.body.requestKey, frontendKey);
+  assert.equal(approved.body.requestId, frontendKey);
+  assert.equal(publicRequestReference(approved.body), frontendKey);
+  assert.equal(approved.body.bookingId, squareBookingId);
+  assert.doesNotMatch(JSON.stringify(approved.body), new RegExp(stored.id, "i"));
+  assert.doesNotMatch(JSON.stringify(approved.body), new RegExp(token, "i"));
+
+  const receipt = emails.find((call) => String(call.body.subject).includes("We received"));
+  const approval = emails.find((call) => String(call.body.subject).includes("awaiting approval"));
+  assert.match(receipt.body.text, new RegExp(frontendKey));
+  assert.match(approval.body.text, new RegExp(frontendKey));
+  assert.doesNotMatch(receipt.body.text, new RegExp(stored.id, "i"));
+  assert.doesNotMatch(approval.body.text, new RegExp(stored.id, "i"));
 });
 
 test("approve creates the Square booking with a deterministic idempotency key and buyer-level option, then confirms", async () => {
@@ -356,13 +432,16 @@ test("approve creates the Square booking with a deterministic idempotency key an
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.status, "approved");
   assert.equal(res.body.requestId, created.body.requestId);
+  assert.equal(res.body.requestKey, REQUEST_KEY);
   assert.equal(res.body.bookingId, "BK_APPROVED_1");
   assert.match(res.body.calendarUrl, /calendar\.google\.com\/calendar\/render/);
   assert.equal(res.body.message, "Your appointment is confirmed.");
 
   assert.equal(state.createCalls.length, 1);
   const createReq = state.createCalls[0];
-  assert.equal(createReq.idempotencyKey, `kai-lani.request.${created.body.requestId}`);
+  const stored = await createStoreRow(created.body.requestKey);
+  assert.notEqual(stored.id, created.body.requestId);
+  assert.equal(createReq.idempotencyKey, `kai-lani.request.${stored.id}`);
   assert.equal(createReq.booking.startAt, SLOT);
   assert.deepEqual(state.createCalls[0].booking.sellerNote, undefined);
   assert.equal("sellerNote" in state.createCalls[0].booking, false);
@@ -373,17 +452,16 @@ test("approve creates the Square booking with a deterministic idempotency key an
   );
   assert.deepEqual(createReq.requestOptions, { queryParams: { seller_level: false } });
 
-  const store = await createStoreRow(created.body.requestId);
-  assert.equal(store.status, "approved");
-  assert.equal(store.squareBookingId, "BK_APPROVED_1");
-  assert.equal(store.squareBookingVersion, 1);
-  assert.equal(store.squareBookingStatus, "ACCEPTED");
-  assert.equal(store.squareSyncStatus, "created");
-  assert.equal(store.squareServiceVariationId, "VAR_CUSTOMIZED_60");
-  assert.equal(store.squareLocationId, "LOC_SANDBOX");
-  assert.equal(store.squareTeamMemberId, "TM_CHELSEA");
-  assert.equal(store.confirmationEmailStatus, "sent");
-  assert.equal(store.providerConfirmationEmailStatus, "sent");
+  assert.equal(stored.status, "approved");
+  assert.equal(stored.squareBookingId, "BK_APPROVED_1");
+  assert.equal(stored.squareBookingVersion, 1);
+  assert.equal(stored.squareBookingStatus, "ACCEPTED");
+  assert.equal(stored.squareSyncStatus, "created");
+  assert.equal(stored.squareServiceVariationId, "VAR_CUSTOMIZED_60");
+  assert.equal(stored.squareLocationId, "LOC_SANDBOX");
+  assert.equal(stored.squareTeamMemberId, "TM_CHELSEA");
+  assert.equal(stored.confirmationEmailStatus, "sent");
+  assert.equal(stored.providerConfirmationEmailStatus, "sent");
 
   const clientEmail = emails.find((call) =>
     String(call.body.subject).includes("appointment is confirmed"),
@@ -401,8 +479,8 @@ test("approve creates the Square booking with a deterministic idempotency key an
   assert.equal(providerEmail.body.attachments[0].filename, "kai-lani-appointment.ics");
 });
 
-async function createStoreRow(requestId) {
-  return store.getRequestById(requestId);
+async function createStoreRow(requestKey) {
+  return store.getRequestByKey(requestKey);
 }
 
 test("approve is idempotent and never creates a duplicate Square booking", async () => {
@@ -455,7 +533,7 @@ test("approve when the slot is gone marks needs_reschedule and emails the client
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.status, "needs_reschedule");
 
-  const row = await createStoreRow(created.body.requestId);
+  const row = await createStoreRow(created.body.requestKey);
   assert.equal(row.status, "needs_reschedule");
 
   const rescheduleEmail = emails.find((call) =>
@@ -481,7 +559,7 @@ test("decline marks the request declined and emails the client", async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.status, "declined");
 
-  const row = await createStoreRow(created.body.requestId);
+  const row = await createStoreRow(created.body.requestKey);
   assert.equal(row.status, "declined");
   assert.equal(row.declineEmailStatus, "sent");
 

@@ -74,14 +74,16 @@ export default async function handler(req, res) {
   if (row.status === "declined") {
     return res.status(200).json({
       status: "declined",
-      requestId: row.id,
+      requestId: row.requestKey,
+      requestKey: row.requestKey,
       message: "This appointment request was declined.",
     });
   }
   if (row.status === "needs_reschedule") {
     return res.status(200).json({
       status: "needs_reschedule",
-      requestId: row.id,
+      requestId: row.requestKey,
+      requestKey: row.requestKey,
       message: "That time is no longer available. The client has been asked to request a new time.",
     });
   }
@@ -115,7 +117,8 @@ export default async function handler(req, res) {
     if (current?.status === "declined") {
       return res.status(200).json({
         status: "declined",
-        requestId: current.id,
+        requestId: current.requestKey,
+        requestKey: current.requestKey,
         message: "This appointment request was declined.",
       });
     }
@@ -126,7 +129,7 @@ export default async function handler(req, res) {
 
   const service = getServiceConfig(row.serviceKey);
   const declineStatus = await sendDeclinedClientEmail({
-    requestId: row.id,
+    requestId: row.requestKey,
     requestKey: row.requestKey,
     serviceKey: row.serviceKey,
     serviceName: service ? service.name : row.serviceKey,
@@ -141,7 +144,8 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     status: "declined",
-    requestId: row.id,
+    requestId: row.requestKey,
+    requestKey: row.requestKey,
     message: "This appointment request was declined.",
     notification: { decline: declineStatus },
   });

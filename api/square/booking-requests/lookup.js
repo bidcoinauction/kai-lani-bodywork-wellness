@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   const serviceName = service ? service.name : row.serviceKey;
 
   return res.status(200).json({
-    requestId: row.id,
+    requestId: row.requestKey,
     requestKey: row.requestKey,
     status: row.status,
     serviceKey: row.serviceKey,

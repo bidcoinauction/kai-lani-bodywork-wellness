@@ -49,7 +49,7 @@ export class MemoryBookingRequestStore {
 
   _row(id) {
     for (const row of this.rows.values()) {
-      if (row.id === String(id)) return { ...row };
+      if (row.id === String(id) || row.requestKey === String(id)) return { ...row };
     }
     return null;
   }
@@ -218,7 +218,7 @@ export class MemoryBookingRequestStore {
 
   _findById(id) {
     for (const row of this.rows.values()) {
-      if (row.id === String(id)) return row;
+      if (row.id === String(id) || row.requestKey === String(id)) return row;
     }
     return null;
   }

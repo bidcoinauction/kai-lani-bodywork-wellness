@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { publicRequestReference } from "../../lib/request-reference.js";
 import "./SquareBooking.css";
 
 /*
@@ -334,6 +335,7 @@ export default function SquareBooking() {
 
     setSubmitting(true);
     setBookingError(null);
+    setBookingResult(null);
     setStatusMessage("Sending your appointment request\u2026");
     try {
       const res = await fetch("/api/square/booking-requests", {
@@ -352,7 +354,7 @@ export default function SquareBooking() {
         }),
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok || !data || !data.requestId) {
+      if (!res.ok || !data || !data.requestKey) {
         throw new Error(data?.error || "Could not send the appointment request.");
       }
       setBookingResult(data);
@@ -857,10 +859,10 @@ export default function SquareBooking() {
                       {formatDateLabel(date)} at {selectedSlot?.label}
                     </dd>
                   </div>
-                  {bookingResult.requestId && (
+                  {publicRequestReference(bookingResult) && (
                     <div>
                       <dt>Request reference</dt>
-                      <dd>{bookingResult.requestId}</dd>
+                      <dd>{publicRequestReference(bookingResult)}</dd>
                     </div>
                   )}
                 </dl>

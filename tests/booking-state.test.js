@@ -181,7 +181,9 @@ test("resuming an approving request reuses the deterministic booking key and nev
 
   const a = await post(bookingRequestsHandler, makeBody());
   const token = approvalTokenFromEmails(emails);
-  const key = buildSquareIdempotencyKey(a.body.requestId);
+  const createdRow = await store.getRequestByKey(a.body.requestKey);
+  assert.notEqual(createdRow.id, a.body.requestId);
+  const key = buildSquareIdempotencyKey(createdRow.id);
 
   const claimed = await store.claimForApproval(a.body.requestId);
   assert.equal(claimed.status, "approving");
@@ -773,12 +775,14 @@ test("customer matching: neither resolves -> exactly one customer is created, no
 
   const a = await post(bookingRequestsHandler, makeBody());
   const token = approvalTokenFromEmails(emails);
+  const row = await store.getRequestByKey(a.body.requestKey);
   const res = await post(approveHandler, { token });
 
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   assert.equal(state.customerCreateCalls.length, 1);
   const createReq = state.customerCreateCalls[0];
-  assert.equal(createReq.idempotencyKey, buildCustomerIdempotencyKey(a.body.requestId));
+  assert.notEqual(row.id, a.body.requestId);
+  assert.equal(createReq.idempotencyKey, buildCustomerIdempotencyKey(row.id));
   assert.equal(createReq.customer.givenName, "Ava");
   assert.equal(createReq.customer.emailAddress, "ava@example.invalid");
   assert.equal("note" in createReq.customer, false, "never writes a Customer Directory note");
@@ -794,7 +798,9 @@ test("customer matching: retries never create duplicate customers (idempotent cr
 
   const a = await post(bookingRequestsHandler, makeBody());
   const token = approvalTokenFromEmails(emails);
-  const key = buildCustomerIdempotencyKey(a.body.requestId);
+  const row = await store.getRequestByKey(a.body.requestKey);
+  assert.notEqual(row.id, a.body.requestId);
+  const key = buildCustomerIdempotencyKey(row.id);
 
   await store.claimForApproval(a.body.requestId);
   await client.customers.create({ idempotencyKey: key, customer: {} });
@@ -822,6 +828,8 @@ test("a non-retryable Square create error marks the request failed and it cannot
 
   const a = await post(bookingRequestsHandler, makeBody());
   const token = approvalTokenFromEmails(emails);
+  const createdRow = await store.getRequestByKey(a.body.requestKey);
+  assert.notEqual(createdRow.id, a.body.requestId);
   const res = await post(approveHandler, { token });
 
   assert.equal(res.statusCode, 400);
@@ -858,6 +866,8 @@ test("a transient Square create timeout remains retryable and resumes with the d
 
   const a = await post(bookingRequestsHandler, makeBody());
   const token = approvalTokenFromEmails(emails);
+  const createdRow = await store.getRequestByKey(a.body.requestKey);
+  assert.notEqual(createdRow.id, a.body.requestId);
 
   const failedTransient = await post(approveHandler, { token });
   assert.equal(failedTransient.statusCode, 500);
@@ -872,8 +882,8 @@ test("a transient Square create timeout remains retryable and resumes with the d
   assert.equal(row.status, "awaiting_square_acceptance");
   assert.equal(row.squareBookingId, "BK_TIMEOUT_RESUME");
   assert.equal(state.createCalls.length, 2);
-  assert.equal(state.createCalls[0].idempotencyKey, buildSquareIdempotencyKey(a.body.requestId));
-  assert.equal(state.createCalls[1].idempotencyKey, buildSquareIdempotencyKey(a.body.requestId));
+  assert.equal(state.createCalls[0].idempotencyKey, buildSquareIdempotencyKey(createdRow.id));
+  assert.equal(state.createCalls[1].idempotencyKey, buildSquareIdempotencyKey(createdRow.id));
 });
 
 test("concurrent approve and decline cannot both succeed", async () => {

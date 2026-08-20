@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { publicRequestReference } from "../lib/request-reference.js";
 import "./ApprovalPage.css";
 
 /*
@@ -157,7 +158,7 @@ export default function ApprovalPage() {
       </div>
       <div>
         <dt>Request reference</dt>
-        <dd>{request.requestId}</dd>
+        <dd>{publicRequestReference(request)}</dd>
       </div>
     </dl>
   );
