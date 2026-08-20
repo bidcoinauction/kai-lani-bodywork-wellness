@@ -110,3 +110,22 @@ test("booking source clears stale result state before a second submission", () =
     /setSubmitting\(true\);\s*setBookingError\(null\);\s*setBookingResult\(null\);/,
   );
 });
+
+test("mobile booking action keeps disabled wording and complete summary", () => {
+  const bookingSource = fs.readFileSync(
+    path.join(SRC_ROOT, "components", "calendar", "SquareBooking.jsx"),
+    "utf8",
+  );
+  const bookingStyles = fs.readFileSync(
+    path.join(SRC_ROOT, "components", "calendar", "SquareBooking.css"),
+    "utf8",
+  );
+
+  assert.match(bookingSource, /step === "time" && !selectedSlot\s*\? "Choose a time"/);
+  assert.match(bookingSource, /<span className="sqb-mobile-summary-main">\{mobileMain\}<\/span>/);
+  assert.match(bookingSource, /<span className="sqb-mobile-summary-sub">\{mobileSub\}<\/span>/);
+  assert.match(bookingStyles, /@media \(max-width: 600px\)/);
+  assert.match(bookingStyles, /\.sqb-mobile-action \{\s*display: grid;/);
+  assert.doesNotMatch(bookingStyles, /\.sqb-mobile-action \{[^}]*position: sticky;/s);
+  assert.doesNotMatch(bookingStyles, /\.sqb-mobile-summary-main \{[^}]*text-overflow: ellipsis;/s);
+});

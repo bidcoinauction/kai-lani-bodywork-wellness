@@ -400,6 +400,10 @@ export default function SquareBooking() {
         : "Send request"
       : step === "service" && !serviceKey
         ? "Select a session"
+      : step === "date" && !date
+        ? "Choose a day"
+      : step === "time" && !selectedSlot
+        ? "Choose a time"
       : "Continue";
 
   function handlePrimary() {
@@ -931,7 +935,7 @@ export default function SquareBooking() {
       {step !== "confirm" && (
         <div className="sqb-mobile-action">
           {step !== "contact" && (
-            <div className="sqb-mobile-summary">
+            <div className="sqb-mobile-summary" aria-live="polite">
               <span className="sqb-mobile-summary-main">{mobileMain}</span>
               <span className="sqb-mobile-summary-sub">{mobileSub}</span>
             </div>

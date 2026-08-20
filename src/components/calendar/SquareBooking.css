@@ -905,16 +905,25 @@
 }
 
 /* Mobile */
-@media (max-width: 620px) {
+@media (max-width: 600px) {
   .sqb-shell {
-    padding: 16px;
-    border-radius: 14px;
+    max-width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .sqb-shell-header {
+    gap: 5px;
+  }
+
+  .sqb-eyebrow {
+    font-size: 0.72rem;
   }
 
   .sqb-shell-title {
-    font-size: 1.4rem;
+    font-size: 1.32rem;
     line-height: 1.15;
-    margin-top: 2px;
   }
 
   .sqb-shell-copy {
@@ -931,12 +940,24 @@
   }
 
   .sqb-steps {
-    margin: 18px 0 2px;
-    gap: 6px;
+    justify-content: space-between;
+    margin: 14px 0 0;
+  }
+
+  .sqb-steps::before {
+    left: 13px;
+    right: 13px;
+    top: 22px;
   }
 
   .sqb-step {
-    flex: none;
+    flex: 0 0 26px;
+  }
+
+  .sqb-step-btn {
+    justify-content: center;
+    min-height: 44px;
+    padding: 6px 0;
   }
 
   .sqb-step-label {
@@ -957,8 +978,8 @@
   }
 
   .sqb-layout {
-    margin-top: 14px;
-    gap: 14px;
+    margin-top: 10px;
+    gap: 12px;
   }
 
   .sqb-panel {
@@ -969,12 +990,13 @@
   }
 
   .sqb-heading {
-    margin: 0 0 14px;
+    margin: 0 0 12px;
     font-size: 1.12rem;
   }
 
   .sqb-back {
-    margin-bottom: 6px;
+    margin-bottom: 2px;
+    padding-right: 12px;
   }
 
   /* Date: horizontal scroll-snap scroller */
@@ -992,7 +1014,8 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     overscroll-behavior-x: contain;
-    touch-action: pan-y;
+    padding-bottom: 2px;
+    touch-action: pan-x pan-y;
   }
 
   .sqb-date-grid::-webkit-scrollbar {
@@ -1000,7 +1023,7 @@
   }
 
   .sqb-date-cell {
-    flex: 0 0 64px;
+    flex: 0 0 clamp(76px, 25vw, 88px);
     min-height: 56px;
     padding: 8px 2px;
     gap: 3px;
@@ -1064,54 +1087,44 @@
     gap: 10px;
   }
 
-  /* Summary -> sticky action bar */
+  /* Summary -> mobile action block */
   .sqb-summary {
     display: none;
   }
 
   .sqb-mobile-action {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    margin: 16px -16px 0;
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    display: grid;
+    gap: 10px;
+    margin: 14px 0 0;
+    padding: 12px;
+    border-radius: 12px;
     background: #ffffff;
-    border-top: 1px solid rgba(16, 32, 43, 0.1);
-    box-shadow: 0 -10px 24px rgba(10, 31, 36, 0.12);
+    border: 1px solid rgba(16, 32, 43, 0.08);
+    box-shadow: 0 8px 20px rgba(10, 31, 36, 0.08);
   }
 
   .sqb-mobile-summary {
-    flex: 0 1 auto;
     min-width: 0;
     display: grid;
-    gap: 1px;
+    gap: 2px;
   }
 
   .sqb-mobile-summary-main {
     font-size: 0.84rem;
     font-weight: 800;
     color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.3;
   }
 
   .sqb-mobile-summary-sub {
     font-size: 0.74rem;
     font-weight: 600;
     color: rgba(16, 32, 43, 0.55);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.35;
   }
 
   .sqb-mobile-primary {
-    flex: 1 1 auto;
-    min-width: 148px;
-    width: auto;
+    width: 100%;
     margin: 0;
   }
 
