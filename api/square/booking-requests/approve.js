@@ -461,6 +461,7 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
   try {
     customerId = await findOrCreateCustomer(client, {
       requestId: row.id,
+      requestKey: row.requestKey,
       firstName: row.firstName,
       lastName: row.lastName,
       email: row.email,
@@ -793,6 +794,68 @@ class CustomerCreateError extends Error {
   }
 }
 
+const CUSTOMER_DIAGNOSTIC_FIELDS = new Set([
+  "email_address",
+  "phone_number",
+  "given_name",
+  "family_name",
+  "reference_id",
+  "idempotency_key",
+]);
+
+const CUSTOMER_DIAGNOSTIC_TOKEN = /^[A-Za-z0-9_]+$/;
+
+function safeDiagnosticToken(value) {
+  if (typeof value !== "string") return null;
+  const token = value.trim();
+  if (!CUSTOMER_DIAGNOSTIC_TOKEN.test(token)) return null;
+  return token;
+}
+
+export function safeSquareCustomerError(error) {
+  const diagnostic = { classification: "unknown_error" };
+  if (error && typeof error === "object") {
+    const status = error.statusCode;
+    if (Number.isInteger(status) && status >= 100 && status <= 599) {
+      diagnostic.httpStatus = status;
+      diagnostic.classification = status >= 500 || status === 429 ? "provider_retryable" : "provider_rejected";
+    }
+
+    const firstError = Array.isArray(error.errors) ? error.errors[0] : null;
+    if (firstError && typeof firstError === "object") {
+      const category = safeDiagnosticToken(firstError.category);
+      const code = safeDiagnosticToken(firstError.code);
+      const field = safeDiagnosticToken(firstError.field);
+      if (category) diagnostic.category = category;
+      if (code) diagnostic.code = code;
+      if (field && CUSTOMER_DIAGNOSTIC_FIELDS.has(field)) {
+        diagnostic.field = field;
+      }
+    }
+  }
+  return diagnostic;
+}
+
+function requestReferenceSuffix(requestId) {
+  return typeof requestId === "string" ? requestId.slice(-6) : "";
+}
+
+function logCustomerDiagnostic(stage, requestId, startedAt, extra = {}) {
+  const elapsedMs = Math.max(0, Date.now() - startedAt);
+  const parts = [
+    `stage=${stage}`,
+    `bookingSuffix=${requestReferenceSuffix(requestId)}`,
+    `elapsedMs=${elapsedMs}`,
+  ];
+  if (extra.match !== undefined) parts.push(`match=${extra.match ? "true" : "false"}`);
+  if (extra.classification) parts.push(`classification=${extra.classification}`);
+  if (extra.httpStatus !== undefined) parts.push(`httpStatus=${extra.httpStatus}`);
+  if (extra.category) parts.push(`category=${extra.category}`);
+  if (extra.code) parts.push(`code=${extra.code}`);
+  if (extra.field) parts.push(`field=${extra.field}`);
+  console.info(`Square customer diagnostic ${parts.join(" ")}`);
+}
+
 /**
  * Square Customer Directory matching audit:
  *  - normalize email and phone before searching
@@ -806,28 +869,45 @@ class CustomerCreateError extends Error {
  * No Customer Directory note, Square seller_note, or health/medical note is
  * written.
  */
-async function findOrCreateCustomer(client, { requestId, firstName, lastName, email, phone }) {
+export async function findOrCreateCustomer(client, { requestId, requestKey, firstName, lastName, email, phone }) {
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   const squarePhone = formatSquarePhoneE164(phone);
+  const logReference = requestKey || requestId;
 
   let emailCustomer = null;
   if (normalizedEmail) {
-    const emailSearch = await client.customers.search({
-      query: {
-        filter: { emailAddress: { exact: normalizedEmail } },
-      },
-    });
-    emailCustomer = emailSearch.customers?.[0] || null;
+    const startedAt = Date.now();
+    logCustomerDiagnostic("customer_email_search_started", logReference, startedAt);
+    try {
+      const emailSearch = await client.customers.search({
+        query: {
+          filter: { emailAddress: { exact: normalizedEmail } },
+        },
+      });
+      emailCustomer = emailSearch.customers?.[0] || null;
+      logCustomerDiagnostic("customer_email_search_succeeded", logReference, startedAt, { match: Boolean(emailCustomer) });
+    } catch (error) {
+      logCustomerDiagnostic("customer_email_search_failed", logReference, startedAt, safeSquareCustomerError(error));
+      throw error;
+    }
   }
 
   let phoneCustomer = null;
   if (squarePhone) {
-    const phoneSearch = await client.customers.search({
-      query: {
-        filter: { phoneNumber: { exact: squarePhone } },
-      },
-    });
-    phoneCustomer = phoneSearch.customers?.[0] || null;
+    const startedAt = Date.now();
+    logCustomerDiagnostic("customer_phone_search_started", logReference, startedAt);
+    try {
+      const phoneSearch = await client.customers.search({
+        query: {
+          filter: { phoneNumber: { exact: squarePhone } },
+        },
+      });
+      phoneCustomer = phoneSearch.customers?.[0] || null;
+      logCustomerDiagnostic("customer_phone_search_succeeded", logReference, startedAt, { match: Boolean(phoneCustomer) });
+    } catch (error) {
+      logCustomerDiagnostic("customer_phone_search_failed", logReference, startedAt, safeSquareCustomerError(error));
+      throw error;
+    }
   }
 
   if (emailCustomer && phoneCustomer) {
@@ -837,18 +917,28 @@ async function findOrCreateCustomer(client, { requestId, firstName, lastName, em
   if (emailCustomer) return emailCustomer.id;
   if (phoneCustomer) return phoneCustomer.id;
 
-  const created = await client.customers.create({
-    idempotencyKey: buildCustomerIdempotencyKey(requestId),
-    customer: {
-      givenName: firstName,
-      familyName: lastName,
-      emailAddress: email,
-      phoneNumber: squarePhone,
-    },
-  });
+  const startedAt = Date.now();
+  logCustomerDiagnostic("customer_create_started", logReference, startedAt);
+  let created;
+  try {
+    created = await client.customers.create({
+      idempotencyKey: buildCustomerIdempotencyKey(requestId),
+      customer: {
+        givenName: firstName,
+        familyName: lastName,
+        emailAddress: email,
+        phoneNumber: squarePhone,
+      },
+    });
+  } catch (error) {
+    logCustomerDiagnostic("customer_create_failed", logReference, startedAt, safeSquareCustomerError(error));
+    throw error;
+  }
   if (!created.customer || !created.customer.id) {
+    logCustomerDiagnostic("customer_create_failed", logReference, startedAt, { code: "MISSING_CUSTOMER_ID" });
     throw new CustomerCreateError();
   }
+  logCustomerDiagnostic("customer_create_succeeded", logReference, startedAt);
   return created.customer.id;
 }
 
