@@ -82,3 +82,40 @@ test("Square SDK v44.2.1 rejects numeric serviceVariationVersion before transpor
   );
   assert.equal(called, false);
 });
+
+test("Square SDK v44.2.1 customer create serializes flat camelCase fields to snake_case", async () => {
+  const calls = [];
+  const client = new SquareClient({
+    token: "test_token_offline",
+    baseUrl: "https://square-offline.example.invalid",
+    maxRetries: 0,
+    fetch: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ customer: { id: "CUST_OFFLINE" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  await client.customers.create({
+    idempotencyKey: "idem-offline-customer-test",
+    givenName: "Taylor",
+    familyName: "Example",
+    emailAddress: "taylor@example.invalid",
+    phoneNumber: "+12025550147",
+    referenceId: "kai-lani.customer.offline",
+  });
+
+  assert.equal(calls.length, 1, "intercepted fetch proves no live network request occurred");
+  const url = new URL(calls[0].url);
+  assert.equal(url.pathname, "/v2/customers");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    idempotency_key: "idem-offline-customer-test",
+    given_name: "Taylor",
+    family_name: "Example",
+    email_address: "taylor@example.invalid",
+    phone_number: "+12025550147",
+    reference_id: "kai-lani.customer.offline",
+  });
+});

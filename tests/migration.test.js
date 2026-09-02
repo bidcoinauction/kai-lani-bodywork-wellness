@@ -16,6 +16,10 @@ const buyerLevelSql = readFileSync(
   resolve(here, "../db/migrations/003_buyer_level_booking_state.sql"),
   "utf8",
 );
+const turnoverSql = readFileSync(
+  resolve(here, "../db/migrations/004_turnover_buffer.sql"),
+  "utf8",
+);
 
 const STATUSES = [
   "pending",
@@ -146,11 +150,19 @@ test("migration 003 additively adds awaiting_square_acceptance to status and exc
   assert.doesNotMatch(buyerLevelSql, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/i);
 });
 
+test("migration 004 additively enforces the 30-minute turnover buffer", () => {
+  assert.match(turnoverSql, /no_overlapping_active_requests/);
+  assert.match(turnoverSql, /duration_minutes \+ 30/);
+  assert.match(turnoverSql, /status IN \('pending', 'approving', 'awaiting_square_acceptance'\)/);
+  assert.doesNotMatch(turnoverSql, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/i);
+});
+
 // ---------------------------------------------------------------------------
 // Functional mirror of the exclusion constraint. MemoryBookingRequestStore
 // enforces the same invariants as the database: only ACTIVE (pending and
-// approving/awaiting_square_acceptance) rows hold their time window, and adjacency at a range boundary is
-// allowed. These tests pin the behavior the migration must guarantee.
+// approving/awaiting_square_acceptance) rows hold their time window plus the
+// 30-minute turnover buffer. These tests pin the behavior the migration must
+// guarantee.
 // ---------------------------------------------------------------------------
 
 async function createRequestAt(store, key, startAt, durationMinutes = 60) {
@@ -200,13 +212,13 @@ test("overlapping pending, approving, and awaiting ranges are rejected", async (
   );
 });
 
-test("adjacent ranges are accepted (60- and 90-minute durations)", async () => {
+test("exact 30-minute buffered ranges are accepted (60- and 90-minute durations)", async () => {
   const store = new MemoryBookingRequestStore();
 
   const a = await createRequestAt(store, "k-a1", "2026-09-01T10:00:00Z", 60);
-  const b = await createRequestAt(store, "k-a2", "2026-09-01T11:00:00Z", 60);
-  const c = await createRequestAt(store, "k-a3", "2026-09-01T12:00:00Z", 90);
-  const d = await createRequestAt(store, "k-a4", "2026-09-01T13:30:00Z", 90);
+  const b = await createRequestAt(store, "k-a2", "2026-09-01T11:30:00Z", 60);
+  const c = await createRequestAt(store, "k-a3", "2026-09-01T13:00:00Z", 90);
+  const d = await createRequestAt(store, "k-a4", "2026-09-01T15:00:00Z", 90);
   assert.ok(a && b && c && d);
 });
 

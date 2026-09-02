@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { findOrCreateCustomer, safeSquareCustomerError } from "../api/square/booking-requests/approve.js";
-import { buildCustomerIdempotencyKey } from "../lib/booking-requests.js";
+import { buildCustomerIdempotencyKey, buildCustomerReferenceId } from "../lib/booking-requests.js";
 
 const REQUEST_ID = "11111111-1111-4111-8111-111111111111";
 const REQUEST_KEY = "public-request-safe-123456";
@@ -168,7 +168,7 @@ test("existing-customer reuse behavior is unchanged", async () => {
   assert.equal(createCalls, 0);
 });
 
-test("new-customer request shape remains unchanged and uses deterministic idempotency key", async () => {
+test("new-customer request shape matches Square SDK v44.2.1 flat fields", async () => {
   const createCalls = [];
   await findOrCreateCustomer(makeClient({
     create: async (request) => {
@@ -180,14 +180,14 @@ test("new-customer request shape remains unchanged and uses deterministic idempo
   assert.equal(createCalls.length, 1);
   assert.equal(createCalls[0].idempotencyKey, buildCustomerIdempotencyKey(REQUEST_ID));
   assert.equal(createCalls[0].idempotencyKey.length, 54);
-  assert.deepEqual(createCalls[0].customer, {
-    givenName: "Taylor",
-    familyName: "Example",
-    emailAddress: "taylor@example.invalid",
-    phoneNumber: "+12025550147",
-  });
-  assert.equal("referenceId" in createCalls[0].customer, false);
-  assert.equal("note" in createCalls[0].customer, false);
+  assert.equal(createCalls[0].givenName, "Taylor");
+  assert.equal(createCalls[0].familyName, "Example");
+  assert.equal(createCalls[0].emailAddress, "taylor@example.invalid");
+  assert.equal(createCalls[0].phoneNumber, "+12025550147");
+  assert.equal(createCalls[0].referenceId, buildCustomerReferenceId(REQUEST_ID));
+  assert.equal(createCalls[0].referenceId.length, 54);
+  assert.equal("customer" in createCalls[0], false);
+  assert.equal("note" in createCalls[0], false);
 });
 
 test("diagnostic fixtures use fictional identities only", () => {

@@ -133,21 +133,21 @@ test("memory store: reconcile returns null for an unknown local request id", asy
   assert.equal(result, null);
 });
 
-test("memory store: findPendingOverlaps excludes adjacent ranges", async () => {
+test("memory store: findPendingOverlaps requires the 30-minute buffer", async () => {
   const store = new MemoryBookingRequestStore();
   await createRequest(store, "adjacent-left", "2026-12-02T15:00:00Z", 60);
-  await createRequest(store, "adjacent-right", "2026-12-02T16:00:00Z", 60);
+  await createRequest(store, "buffered-right", "2026-12-02T16:30:00Z", 60);
   const overlaps = await store.findPendingOverlaps({
-    startAt: "2026-12-02T16:00:00Z",
+    startAt: "2026-12-02T16:29:00Z",
     durationMinutes: 60,
   });
-  assert.deepEqual(overlaps.map((row) => row.requestKey), ["adjacent-right"]);
+  assert.deepEqual(overlaps.map((row) => row.requestKey), ["adjacent-left", "buffered-right"]);
 });
 
 test("memory store: movePendingOverlapToNeedsReschedule only mutates pending rows", async () => {
   const store = new MemoryBookingRequestStore();
   const pending = await createRequest(store, "move-pending", "2026-12-03T15:00:00Z");
-  const approving = await createRequest(store, "move-approving", "2026-12-03T16:00:00Z");
+  const approving = await createRequest(store, "move-approving", "2026-12-03T16:30:00Z");
   await store.claimForApproval(approving.id);
   assert.equal((await store.movePendingOverlapToNeedsReschedule(pending.id)).status, "needs_reschedule");
   assert.equal(await store.movePendingOverlapToNeedsReschedule(approving.id), null);

@@ -3,6 +3,7 @@ import { getSquareClient } from "../../../lib/square.js";
 import { requireBookingConfig, ConfigError } from "../../../lib/config.js";
 import {
   buildCustomerIdempotencyKey,
+  buildCustomerReferenceId,
   buildSquareIdempotencyKey,
   findSlotAvailability,
   formatSquarePhoneE164,
@@ -923,12 +924,11 @@ export async function findOrCreateCustomer(client, { requestId, requestKey, firs
   try {
     created = await client.customers.create({
       idempotencyKey: buildCustomerIdempotencyKey(requestId),
-      customer: {
-        givenName: firstName,
-        familyName: lastName,
-        emailAddress: email,
-        phoneNumber: squarePhone,
-      },
+      givenName: firstName,
+      familyName: lastName,
+      emailAddress: normalizedEmail,
+      phoneNumber: squarePhone,
+      referenceId: buildCustomerReferenceId(requestId),
     });
   } catch (error) {
     logCustomerDiagnostic("customer_create_failed", logReference, startedAt, safeSquareCustomerError(error));

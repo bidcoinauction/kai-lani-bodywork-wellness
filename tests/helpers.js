@@ -102,6 +102,7 @@ export function makeSquareMock(overrides = {}) {
       bookings: {
         searchAvailability:
           overrides.bookings?.searchAvailability || (async () => ({ availabilities: [] })),
+        list: overrides.bookings?.list || (async () => ({ data: [] })),
         create:
           overrides.bookings?.create ||
           (async () => ({ booking: { id: "BK_1", status: "ACCEPTED" } })),
@@ -116,6 +117,7 @@ export function makeSquareMock(overrides = {}) {
   return {
     bookings: {
       searchAvailability: overrides.searchAvailability || (async () => ({ availabilities: [] })),
+      list: overrides.listBookings || (async () => ({ data: [] })),
       create: overrides.create || (async () => ({ booking: { id: "BK_1", status: "ACCEPTED" } })),
     },
     customers: {

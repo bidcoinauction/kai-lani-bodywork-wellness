@@ -10,7 +10,8 @@
 --    token; the raw token is never persisted.
 --  * No medical or sensitive fields are ever stored.
 --  * The btree_gist exclusion constraint prevents two ACTIVE (pending or
---    approving) requests from overlapping in time. The hold covers only the
+--    approving) requests from overlapping in time, including 30 minutes of
+--    private turnaround after each appointment. The hold covers only the
 --    website review window: once a request is approved, Square availability
 --    becomes the source of truth, so an approved (or declined / expired /
 --    failed / needs-reschedule) row never blocks the slot permanently.
@@ -83,7 +84,7 @@ ALTER TABLE booking_requests
     (CASE WHEN status IN ('pending', 'approving') THEN 'hold' END) WITH =,
     tsrange(
       start_at AT TIME ZONE 'UTC',
-      (start_at AT TIME ZONE 'UTC') + duration_minutes * interval '1 minute',
+      (start_at AT TIME ZONE 'UTC') + (duration_minutes + 30) * interval '1 minute',
       '[)'
     ) WITH &&
   );

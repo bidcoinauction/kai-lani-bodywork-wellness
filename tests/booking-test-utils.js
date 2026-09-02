@@ -93,6 +93,7 @@ export function makeSquareMock({
   bookingStatus = "ACCEPTED",
   customers,
   bookingsCreate,
+  bookingsList,
   serviceVariationVersion = 3,
   catalogGet,
 } = {}) {
@@ -127,6 +128,10 @@ export function makeSquareMock({
             { startAt: requestedStart, appointmentSegments: [{ serviceVariationVersion }] },
           ],
         };
+      },
+      list: async (request) => {
+        if (bookingsList) return bookingsList(request, state);
+        return { data: [] };
       },
       create: async (request, requestOptions) => {
         state.createCalls.push({ ...request, requestOptions });

@@ -29,6 +29,10 @@ import {
 
 let store;
 
+function slotPlus(minutes) {
+  return new Date(new Date(SLOT).getTime() + minutes * 60000).toISOString();
+}
+
 beforeEach(() => {
   store = new MemoryBookingRequestStore();
   setupBookingTest(store);
@@ -592,6 +596,38 @@ test("fresh approval fails closed when availability lacks a version (never calls
   assert.equal(state.createCalls.length, 0);
 });
 
+test("approval recheck rejects a Square buffer collision before booking creation", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const initial = makeSquareMock();
+  setSquareClientForTests(initial.client);
+  const emails = captureEmailCalls();
+
+  const pending = await post(bookingRequestsHandler, makeBody({ startAt: slotPlus(89) }));
+  assert.equal(pending.statusCode, 201);
+
+  const { client, state } = makeSquareMock({
+    bookingsList: async () => ({
+      data: [
+        {
+          id: "BK_EXISTING_BUFFER",
+          status: "ACCEPTED",
+          startAt: SLOT,
+          appointmentSegments: [{ teamMemberId: "TM_CHELSEA", durationMinutes: 60 }],
+        },
+      ],
+    }),
+  });
+  setSquareClientForTests(client);
+  const token = approvalTokenFromEmails(emails);
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.status, "needs_reschedule");
+  assert.equal(state.createCalls.length, 0);
+  assert.equal((await store.getRequestByKey(REQUEST_KEY)).status, "needs_reschedule");
+});
+
 test("resume fails closed when the catalog lookup itself errors", async () => {
   installGateEnv();
   installEmailEnv();
@@ -783,10 +819,36 @@ test("customer matching: neither resolves -> exactly one customer is created, no
   const createReq = state.customerCreateCalls[0];
   assert.notEqual(row.id, a.body.requestId);
   assert.equal(createReq.idempotencyKey, buildCustomerIdempotencyKey(row.id));
-  assert.equal(createReq.customer.givenName, "Ava");
-  assert.equal(createReq.customer.emailAddress, "ava@example.invalid");
-  assert.equal("note" in createReq.customer, false, "never writes a Customer Directory note");
+  assert.equal(createReq.givenName, "Ava");
+  assert.equal(createReq.emailAddress, "ava@example.invalid");
+  assert.equal(createReq.phoneNumber, "+19805550100");
+  assert.match(createReq.referenceId, /^kai-lani\.customer\./);
+  assert.equal("customer" in createReq, false);
+  assert.equal("note" in createReq, false, "never writes a Customer Directory note");
   assert.equal(state.createCalls[0].booking.customerId, "CUST_APPROVE_1");
+});
+
+test("customer matching: missing created customer id fails safely before booking creation", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock({
+    customers: {
+      create: async () => ({ customer: {} }),
+    },
+  });
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const created = await post(bookingRequestsHandler, makeBody());
+  const token = approvalTokenFromEmails(emails);
+  const res = await post(approveHandler, { token });
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(state.customerCreateCalls.length, 1);
+  assert.equal(state.createCalls.length, 0);
+  const row = await store.getRequestByKey(created.body.requestKey);
+  assert.equal(row.status, "failed");
+  assert.equal(row.failureCode, "customer_create");
 });
 
 test("customer matching: retries never create duplicate customers (idempotent create key)", async () => {

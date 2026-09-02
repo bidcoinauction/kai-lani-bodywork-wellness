@@ -3,12 +3,17 @@ import { requireBookingConfig, ConfigError } from "../../lib/config.js";
 import { isBookingApprovalEnabled } from "../../lib/environment.js";
 import { isServiceKey } from "../../lib/services.js";
 import {
+  hasTurnoverConflict,
+  listSquareBlockingBookings,
+} from "../../lib/booking-requests.js";
+import {
   isValidDateString,
   getNewYorkDateString,
   addDays,
   startOfDayInTimeZone,
   formatTimeLabel,
 } from "../../lib/time.js";
+import { getBookingRequestStore } from "../../lib/store.js";
 
 export const MAX_DAYS_AHEAD = 13;
 
@@ -145,10 +150,38 @@ export default async function handler(req, res) {
       },
     });
     logAvailability("availability_search_succeeded", { serviceKey, date, startedAt });
+    const existingSquareBookings = await listSquareBlockingBookings(client, {
+      locationId: config.locationId,
+      teamMemberId: config.teamMemberId,
+      dayStart,
+      dayEnd,
+    });
 
-    const slots = (response.availabilities || [])
-      .map((availability) => availability.startAt)
-      .filter((startAt) => typeof startAt === "string")
+    const store = getBookingRequestStore();
+    await store.expirePendingRequests();
+
+    const slots = [];
+    for (const availability of response.availabilities || []) {
+      const startAt = availability.startAt;
+      if (typeof startAt !== "string") continue;
+      if (hasTurnoverConflict({
+        startAt,
+        durationMinutes: config.service.durationMinutes,
+        existing: existingSquareBookings,
+      })) continue;
+      const localConflicts = [];
+      for (const status of ["pending", "approving", "awaiting_square_acceptance"]) {
+        localConflicts.push(...await store.findPendingOverlaps({
+          startAt,
+          durationMinutes: config.service.durationMinutes,
+          status,
+        }));
+      }
+      if (localConflicts.length > 0) continue;
+      slots.push(startAt);
+    }
+
+    const renderedSlots = slots
       .sort()
       .map((startAt) => ({
         startAt,
@@ -158,7 +191,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       date,
       serviceKey,
-      slots,
+      slots: renderedSlots,
     });
   } catch (error) {
     const { classification, status } = classifyAvailabilityError(error);

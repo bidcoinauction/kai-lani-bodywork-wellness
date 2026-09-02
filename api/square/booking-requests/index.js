@@ -170,6 +170,19 @@ async function handleCreate(req, res) {
       .json({ error: "That time is no longer available. Please pick another." });
   }
 
+  for (const status of ["pending", "approving", "awaiting_square_acceptance"]) {
+    const overlaps = await store.findPendingOverlaps({
+      startAt: input.start,
+      durationMinutes: input.durationMinutes,
+      status,
+    });
+    if (overlaps.length > 0) {
+      return res
+        .status(409)
+        .json({ error: "That time is no longer available. Please pick another." });
+    }
+  }
+
   const token = generateApprovalToken();
   const approvalTokenHash = hashToken(token);
   const approvalTokenExpiresAt = addMinutes(

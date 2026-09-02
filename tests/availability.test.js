@@ -2,6 +2,8 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import availabilityHandler, { availabilityDiagnosticsForTests } from "../api/square/availability.js";
 import { resetSquareClientForTests } from "../lib/square.js";
+import { setBookingRequestStoreForTests, resetBookingRequestStoreForTests } from "../lib/store.js";
+import { MemoryBookingRequestStore } from "./memory-store.js";
 import {
   addDays,
   getNewYorkDateString,
@@ -17,11 +19,13 @@ import {
 
 beforeEach(() => {
   resetSquareClientForTests();
+  setBookingRequestStoreForTests(new MemoryBookingRequestStore());
 });
 
 afterEach(() => {
   clearSquareEnv();
   resetSquareClientForTests();
+  resetBookingRequestStoreForTests();
 });
 
 function dateInDays(days) {
@@ -165,6 +169,91 @@ test("returns an empty slots array when there is no availability", async () => {
   );
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.slots, []);
+});
+
+test("public availability applies 30-minute buffer to Square bookings without changing displayed duration", async () => {
+  installFullConfig();
+  const date = dateInDays(1);
+  const existingStart = `${date}T14:00:00.000Z`;
+  const immediate = `${date}T15:00:00.000Z`;
+  const twentyNine = `${date}T15:29:00.000Z`;
+  const exactThirty = `${date}T15:30:00.000Z`;
+  const res = await withSquareMock(
+    {
+      searchAvailability: async () => ({
+        availabilities: [
+          { startAt: immediate },
+          { startAt: twentyNine },
+          { startAt: exactThirty },
+        ],
+      }),
+      listBookings: async () => ({
+        data: [
+          {
+            id: "BK_EXISTING",
+            status: "ACCEPTED",
+            startAt: existingStart,
+            appointmentSegments: [{ teamMemberId: "TM_CHELSEA", durationMinutes: 60 }],
+          },
+        ],
+      }),
+    },
+    () => run({ serviceKey: "customized_60", date }),
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.slots.map((slot) => slot.startAt), [exactThirty]);
+  assert.equal("durationMinutes" in res.body.slots[0], false);
+});
+
+test("public availability applies the same buffer to pending local holds and ignores terminal rows", async () => {
+  installFullConfig();
+  const date = dateInDays(1);
+  const store = new MemoryBookingRequestStore();
+  setBookingRequestStoreForTests(store);
+  await store.createRequest({
+    requestKey: "pending-hold",
+    serviceKey: "customized_60",
+    firstName: "Ava",
+    lastName: "Test",
+    email: "ava@example.invalid",
+    phone: "+19805550100",
+    startAt: `${date}T14:00:00.000Z`,
+    durationMinutes: 60,
+  });
+  const terminal = await store.createRequest({
+    requestKey: "terminal-hold",
+    serviceKey: "customized_60",
+    firstName: "Bea",
+    lastName: "Test",
+    email: "bea@example.invalid",
+    phone: "+19805550101",
+    startAt: `${date}T17:00:00.000Z`,
+    durationMinutes: 60,
+    approvalTokenExpiresAt: new Date(Date.now() + 600000),
+  });
+  await store.claimForApproval(terminal.id);
+  await store.markFailed({ id: terminal.id, failureCode: "test" });
+  assert.equal((await store.getRequestById(terminal.id)).status, "failed");
+
+  const res = await withSquareMock(
+    {
+      searchAvailability: async () => ({
+        availabilities: [
+          { startAt: `${date}T15:29:00.000Z` },
+          { startAt: `${date}T15:30:00.000Z` },
+          { startAt: `${date}T18:00:00.000Z` },
+        ],
+      }),
+    },
+    () => run({ serviceKey: "customized_60", date }),
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.slots.map((slot) => slot.startAt), [
+    `${date}T15:30:00.000Z`,
+    `${date}T18:00:00.000Z`,
+  ]);
 });
 
 test("returns a safe 500 when configuration is missing", async () => {

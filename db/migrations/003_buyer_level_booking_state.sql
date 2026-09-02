@@ -56,7 +56,7 @@ ALTER TABLE booking_requests
     (CASE WHEN status IN ('pending', 'approving', 'awaiting_square_acceptance') THEN 'hold' END) WITH =,
     tsrange(
       start_at AT TIME ZONE 'UTC',
-      (start_at AT TIME ZONE 'UTC') + duration_minutes * interval '1 minute',
+      (start_at AT TIME ZONE 'UTC') + (duration_minutes + 30) * interval '1 minute',
       '[)'
     ) WITH &&
   );

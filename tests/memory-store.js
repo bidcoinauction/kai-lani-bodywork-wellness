@@ -37,9 +37,7 @@ export class MemoryBookingRequestStore {
       const rowStart = new Date(row.startAt).getTime();
       const rowEnd = rowStart + row.durationMinutes * 60000;
       if (
-        isOverlap(new Date(start), new Date(end), new Date(rowStart), new Date(rowEnd), {
-          bufferMs: 0,
-        })
+        isOverlap(new Date(start), new Date(end), new Date(rowStart), new Date(rowEnd))
       ) {
         return true;
       }
@@ -405,7 +403,7 @@ export class MemoryBookingRequestStore {
       if (excludeId && row.id === String(excludeId)) continue;
       const rowStart = new Date(row.startAt).getTime();
       const rowEnd = rowStart + row.durationMinutes * 60000;
-      if (isOverlap(new Date(start), new Date(end), new Date(rowStart), new Date(rowEnd), { bufferMs: 0 })) {
+      if (isOverlap(new Date(start), new Date(end), new Date(rowStart), new Date(rowEnd))) {
         rows.push({ ...row });
       }
     }

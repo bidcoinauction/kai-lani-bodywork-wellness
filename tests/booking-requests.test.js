@@ -29,6 +29,10 @@ function futureSlot() {
 
 const SLOT = futureSlot();
 
+function slotPlus(minutes) {
+  return new Date(new Date(SLOT).getTime() + minutes * 60000).toISOString();
+}
+
 let store;
 
 function makeBody(overrides = {}) {
@@ -86,11 +90,12 @@ function makeSquareMock({ available = true, bookingStatus = "ACCEPTED" } = {}) {
   const bookingsById = new Map();
   const client = {
     bookings: {
-      searchAvailability: async () => {
+      searchAvailability: async (query) => {
         state.availabilityCalls += 1;
+        const requestedStart = query?.query?.filter?.startAtRange?.startAt || SLOT;
         return {
           availabilities: state.available
-            ? [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }]
+            ? [{ startAt: requestedStart, appointmentSegments: [{ serviceVariationVersion: 3 }] }]
             : [],
         };
       },
@@ -316,6 +321,58 @@ test("an overlapping active request is rejected with 409", async () => {
   );
   assert.equal(overlap.statusCode, 409);
   assert.match(overlap.body.error, /no longer available/);
+});
+
+test("pending holds require a 30-minute turnaround buffer without double-buffering", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock();
+  setSquareClientForTests(client);
+  captureEmailCalls();
+
+  const first = await post(bookingRequestsHandler, makeBody());
+  assert.equal(first.statusCode, 201);
+
+  const immediate = await post(bookingRequestsHandler, makeBody({
+    requestKey: "req_test_buffer_zero",
+    startAt: slotPlus(60),
+  }));
+  assert.equal(immediate.statusCode, 409);
+
+  const twentyNine = await post(bookingRequestsHandler, makeBody({
+    requestKey: "req_test_buffer_29",
+    startAt: slotPlus(89),
+  }));
+  assert.equal(twentyNine.statusCode, 409);
+
+  const exactThirty = await post(bookingRequestsHandler, makeBody({
+    requestKey: "req_test_buffer_30",
+    startAt: slotPlus(90),
+  }));
+  assert.equal(exactThirty.statusCode, 201);
+});
+
+test("a proposed appointment cannot end less than 30 minutes before a later hold", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock();
+  setSquareClientForTests(client);
+  captureEmailCalls();
+
+  const later = await post(bookingRequestsHandler, makeBody({ startAt: slotPlus(90) }));
+  assert.equal(later.statusCode, 201);
+
+  const tooCloseBefore = await post(bookingRequestsHandler, makeBody({
+    requestKey: "req_test_before_29",
+    startAt: slotPlus(1),
+  }));
+  assert.equal(tooCloseBefore.statusCode, 409);
+
+  const exactThirtyBefore = await post(bookingRequestsHandler, makeBody({
+    requestKey: "req_test_before_30",
+    startAt: SLOT,
+  }));
+  assert.equal(exactThirtyBefore.statusCode, 201);
 });
 
 test("GET status and lookup return safe request details without the token", async () => {
@@ -685,12 +742,13 @@ test("approval customer creation receives only the E.164 phone value", async () 
       searchAvailability: async () => ({
         availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
       }),
+      list: async () => ({ data: [] }),
       create: async () => ({ booking: { id: "BK_E164C", status: "ACCEPTED", version: 1 } }),
     },
     customers: {
       search: async () => ({ customers: [] }),
       create: async (request) => {
-        createdCustomer = request.customer;
+        createdCustomer = request;
         return { customer: { id: "CUST_E164C" } };
       },
     },

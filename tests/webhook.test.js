@@ -876,7 +876,7 @@ test("worker: unknown status fails safely without email or business-record creat
 test("worker: Square reschedule moves pending hold but does not create records or email", async () => {
   await createApprovedRequest({ startAt: "2026-11-01T15:00:00.000Z", squareBookingVersion: 1 });
   const pending = await createPendingRequest("pending-overlap", "2026-11-01T17:30:00.000Z", 60);
-  const adjacent = await createPendingRequest("pending-adjacent", "2026-11-01T19:00:00.000Z", 60);
+  const adjacent = await createPendingRequest("pending-adjacent", "2026-11-01T19:30:00.000Z", 60);
   setBookingMock(makeBooking({ version: 2, startAt: "2026-11-01T18:00:00.000Z" }));
   const beforeRows = store.rows.size;
   const res = await runWorker({ rawBody: JSON.stringify(makeQueueMessage({ eventId: "evt-reschedule", version: 2, startAt: "2026-11-01T18:00:00.000Z" })) });
