@@ -58,10 +58,10 @@ export function installProductionEnv() {
   process.env.EMAIL_ENABLED = "true";
   process.env.EMAIL_MODE = "production";
   process.env.RESEND_API_KEY = "prod_resend_key";
-  process.env.EMAIL_FROM = "Kai Lani <bookings@kailaniwellness.com>";
-  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@kailaniwellness.com";
-  process.env.EMAIL_REPLY_TO = "chelsea@kailaniwellness.com";
-  process.env.PUBLIC_SITE_URL = "https://www.kailaniwellness.com";
+  process.env.EMAIL_FROM = "Kai Lani <kailanibodywork@gmail.com>";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "kailanibodywork@gmail.com";
+  process.env.EMAIL_REPLY_TO = "kailanibodywork@gmail.com";
+  process.env.PUBLIC_SITE_URL = "https://www.kailanibodywork.com";
 }
 
 export function clearAllEnv() {

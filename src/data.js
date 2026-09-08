@@ -26,6 +26,14 @@ export const services = [
     description: "Extended session for deeper relaxation, complex tension patterns, and fuller restoration.",
     price: "$123",
   },
+  {
+    id: "deep-tissue",
+    number: "04",
+    duration: "60 or 90 min",
+    name: "Customized Deep Tissue Massage",
+    description: "Focused bodywork for clients who prefer more targeted pressure and slower work on persistent tension areas.",
+    price: "$93+",
+  },
 ];
 
 export const experienceHighlights = [

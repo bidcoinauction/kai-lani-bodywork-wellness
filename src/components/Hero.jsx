@@ -2,10 +2,10 @@ export default function Hero() {
   return (
     <section className="hero">
       <div className="hero-content">
-        <p className="eyebrow hero-kicker">Downtown Mount Holly</p>
-        <h1>Kai Lani Bodywork & Wellness</h1>
+        <p className="eyebrow hero-kicker">Kai Lani Bodywork & Wellness</p>
+        <h1>Massage Therapy in Downtown Mount Holly</h1>
         <p className="hero-copy">
-          Therapeutic massage and restorative bodywork by Chelsea Teller, NC LMBT license no. 19862.
+          Personalized massage and restorative bodywork by Chelsea Teller, NC LMBT license no. 19862, at 106 S Main St, Suite F.
         </p>
         <div className="hero-actions">
           <a className="button primary" href="#booking">Book a session</a>

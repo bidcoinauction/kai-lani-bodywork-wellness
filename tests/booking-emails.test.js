@@ -67,11 +67,11 @@ function installProductionEmailEnv() {
   process.env.BOOKING_APPROVAL_MODE = "production";
   process.env.SQUARE_ENVIRONMENT = "production";
   process.env.RESEND_API_KEY = "prod_resend_key";
-  process.env.EMAIL_FROM = "Kai Lani <bookings@kailaniwellness.com>";
+  process.env.EMAIL_FROM = "Kai Lani <kailanibodywork@gmail.com>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
-  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@kailaniwellness.com";
-  process.env.EMAIL_REPLY_TO = "chelsea@kailaniwellness.com";
-  process.env.PUBLIC_SITE_URL = "https://www.kailaniwellness.com";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "kailanibodywork@gmail.com";
+  process.env.EMAIL_REPLY_TO = "kailanibodywork@gmail.com";
+  process.env.PUBLIC_SITE_URL = "https://www.kailanibodywork.com";
 }
 
 function captureCalls() {

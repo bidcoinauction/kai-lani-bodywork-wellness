@@ -52,10 +52,10 @@ function installProductionEmailEnv() {
   process.env.BOOKING_APPROVAL_MODE = "production";
   process.env.SQUARE_ENVIRONMENT = "production";
   process.env.RESEND_API_KEY = "prod_resend_key";
-  process.env.EMAIL_FROM = "Kai Lani <bookings@kailaniwellness.com>";
+  process.env.EMAIL_FROM = "Kai Lani <kailanibodywork@gmail.com>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
-  process.env.CHELSEA_NOTIFICATION_EMAIL = "chelsea@kailaniwellness.com";
-  process.env.EMAIL_REPLY_TO = "chelsea@kailaniwellness.com";
+  process.env.CHELSEA_NOTIFICATION_EMAIL = "kailanibodywork@gmail.com";
+  process.env.EMAIL_REPLY_TO = "kailanibodywork@gmail.com";
 }
 
 beforeEach(() => {
@@ -163,7 +163,7 @@ test("production routes client confirmation to the real client address", async (
   assert.deepEqual(result, { client: "sent", provider: "sent" });
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].to, ["customer@example.invalid"]);
-  assert.deepEqual(calls[1].to, ["chelsea@kailaniwellness.com"]);
+  assert.deepEqual(calls[1].to, ["kailanibodywork@gmail.com"]);
 });
 
 test("production client and provider messages carry no Sandbox marker", async () => {

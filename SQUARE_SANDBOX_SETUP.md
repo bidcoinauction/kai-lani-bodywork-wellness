@@ -54,7 +54,7 @@ account is not onboarded yet** — confirmed by live API calls.
 ## 4. Location creation
 
 1. In the Sandbox Seller Dashboard, create or confirm the **location** where
-   appointments are held (e.g., 107 West 1st Street, Suite 102, Mount Holly, NC).
+   appointments are held (106 S Main St, Suite F, Mount Holly, NC 28120).
    - The Default Test Account's only location is `L4Z326HP8W2SH` (already
      populated in `.env` from live discovery).
 2. Copy the **Location ID** from the location details. This is

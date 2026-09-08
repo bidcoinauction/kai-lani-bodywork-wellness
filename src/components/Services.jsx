@@ -5,7 +5,7 @@ export default function Services() {
     <section className="services-section" id="services">
       <div className="section-heading" data-reveal>
         <p className="eyebrow">Services</p>
-        <h2>Bodywork with a clear path from check-in to reset.</h2>
+        <h2>Customized massage therapy with a clear path from check-in to reset.</h2>
       </div>
       <div className="service-grid">
         {services.map((service, index) => (
