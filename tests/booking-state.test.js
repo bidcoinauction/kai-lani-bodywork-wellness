@@ -4,6 +4,7 @@ import bookingRequestsHandler from "../api/square/booking-requests/index.js";
 import approveHandler from "../api/square/booking-requests/approve.js";
 import declineHandler from "../api/square/booking-requests/decline.js";
 import lookupHandler from "../api/square/booking-requests/lookup.js";
+import availabilityHandler from "../api/square/availability.js";
 import {
   buildCustomerIdempotencyKey,
   buildSquareIdempotencyKey,
@@ -29,6 +30,29 @@ import {
 
 let store;
 
+async function withMockedNow(isoString, fn) {
+  const RealDate = Date;
+  const fixedMs = new RealDate(isoString).getTime();
+  globalThis.Date = class MockDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        super(fixedMs);
+      } else {
+        super(...args);
+      }
+    }
+
+    static now() {
+      return fixedMs;
+    }
+  };
+  try {
+    return await fn();
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
+
 function slotPlus(minutes) {
   return new Date(new Date(SLOT).getTime() + minutes * 60000).toISOString();
 }
@@ -42,31 +66,49 @@ afterEach(() => {
   teardownBookingTest();
 });
 
-test("BOOKING_APPROVAL_TOKEN_TTL_MINUTES defaults to 120 and honors the override", () => {
+test("BOOKING_APPROVAL_TOKEN_TTL_MINUTES defaults to 1440 and honors the override", () => {
   delete process.env.BOOKING_APPROVAL_TOKEN_TTL_MINUTES;
-  assert.equal(approvalTokenTtlMinutes(), 120);
+  assert.equal(approvalTokenTtlMinutes(), 1440);
   process.env.BOOKING_APPROVAL_TOKEN_TTL_MINUTES = "45";
   assert.equal(approvalTokenTtlMinutes(), 45);
   process.env.BOOKING_APPROVAL_TOKEN_TTL_MINUTES = "not-a-number";
-  assert.equal(approvalTokenTtlMinutes(), 120);
+  assert.equal(approvalTokenTtlMinutes(), 1440);
 });
 
-test("contact consent is explicit and required: missing or false consent is rejected with 400", async () => {
+test("contact consent is legacy-only: missing or false consent succeeds", async () => {
   installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock();
+  setSquareClientForTests(client);
+  captureEmailCalls();
+
   const { contactConsent, ...withoutConsent } = makeBody();
-  assert.equal((await post(bookingRequestsHandler, withoutConsent)).statusCode, 400);
-  assert.equal((await post(bookingRequestsHandler, makeBody({ contactConsent: false }))).statusCode, 400);
-  assert.equal((await post(bookingRequestsHandler, makeBody({ contactConsent: 1 }))).statusCode, 400);
+  const missing = await post(bookingRequestsHandler, withoutConsent);
+  assert.equal(missing.statusCode, 201, JSON.stringify(missing.body));
+  assert.equal(missing.body.status, "pending");
+
+  const explicitFalse = await post(bookingRequestsHandler, makeBody({
+    requestKey: "req_test_contact_false_1",
+    contactConsent: false,
+    startAt: slotPlus(180),
+  }));
+  assert.equal(explicitFalse.statusCode, 201, JSON.stringify(explicitFalse.body));
+  assert.equal(explicitFalse.body.status, "pending");
 });
 
-test("consent is never inferred: a consent-free payload never reaches Square", async () => {
+test("missing marketing consent succeeds and creates no subscription", async () => {
   installGateEnv();
+  installEmailEnv();
   const { client, state } = makeSquareMock();
   setSquareClientForTests(client);
+  captureEmailCalls();
+
   const { contactConsent, ...withoutConsent } = makeBody();
   const res = await post(bookingRequestsHandler, withoutConsent);
-  assert.equal(res.statusCode, 400);
-  assert.equal(state.availabilityCalls, 0);
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.status, "pending");
+  assert.ok(state.availabilityCalls > 0);
+  assert.equal(await store.getSubscriptionByEmail("ava@example.invalid"), null);
 });
 
 test("expired pending requests are swept to expired and release their hold before a new request", async () => {
@@ -95,6 +137,35 @@ test("expired pending requests are swept to expired and release their hold befor
   assert.equal(new Date(rowB.startAt).getTime(), new Date(SLOT).getTime());
 });
 
+test("expired pending requests release overlaps, public availability, and expire idempotently", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client } = makeSquareMock();
+  setSquareClientForTests(client);
+  captureEmailCalls();
+
+  const a = await post(bookingRequestsHandler, makeBody());
+  assert.equal(a.statusCode, 201);
+  assert.equal((await store.findPendingOverlaps({ startAt: SLOT, durationMinutes: 60 })).length, 1);
+  await store.setApprovalTokenExpiry(a.body.requestId, new Date(Date.now() - 60_000));
+
+  assert.equal(await store.expirePendingRequests(), 1);
+  assert.equal(await store.expirePendingRequests(), 0);
+  assert.equal((await store.getRequestById(a.body.requestId)).status, "expired");
+  assert.equal((await store.findPendingOverlaps({ startAt: SLOT, durationMinutes: 60 })).length, 0);
+
+  client.bookings.searchAvailability = async () => ({
+    availabilities: [{ startAt: SLOT, appointmentSegments: [{ serviceVariationVersion: 3 }] }],
+  });
+
+  const availability = await get(availabilityHandler, {
+    serviceKey: "customized_60",
+    date: SLOT.slice(0, 10),
+  });
+  assert.equal(availability.statusCode, 200, JSON.stringify(availability.body));
+  assert.ok(availability.body.slots.some((slot) => slot.startAt === SLOT));
+});
+
 test("an expired approval token cannot approve or decline", async () => {
   installGateEnv();
   installEmailEnv();
@@ -108,15 +179,89 @@ test("an expired approval token cannot approve or decline", async () => {
   await store.setApprovalTokenExpiry(a.body.requestId, new Date(Date.now() - 1000));
 
   const res = await post(approveHandler, { token });
-  assert.equal(res.statusCode, 404);
-  assert.match(res.body.error, /invalid or has expired/i);
+  assert.equal(res.statusCode, 410);
+  assert.match(res.body.message, /approval link has expired/i);
   assert.equal(state.createCalls.length, 0);
 
   const decline = await post(declineHandler, { token });
-  assert.equal(decline.statusCode, 404);
+  assert.equal(decline.statusCode, 410);
   // The approve attempt's expiry sweep already moved the row to expired; it
   // was never decided by either action.
   assert.equal((await store.getRequestById(a.body.requestId)).status, "expired");
+});
+
+test("approval token remains valid beyond two hours and approval still re-checks Square", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock();
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const created = await post(bookingRequestsHandler, makeBody());
+  assert.equal(created.statusCode, 201);
+  const token = approvalTokenFromEmails(emails);
+  await store.setApprovalTokenExpiry(created.body.requestId, new Date(Date.now() + 3 * 60 * 60_000));
+
+  const approved = await post(approveHandler, { token });
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  assert.equal(state.availabilityCalls, 2, "create and approve must each check Square availability");
+  assert.equal(state.createCalls.length, 1);
+});
+
+test("24-hour approval lifetime keeps an overnight request actionable the next morning", async () => {
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock();
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const body = makeBody({
+    startAt: "2026-09-09T14:30:00.000Z",
+    requestKey: "req_test_overnight_approval_1",
+  });
+
+  const created = await withMockedNow("2026-09-07T22:49:00.000Z", () =>
+    post(bookingRequestsHandler, body),
+  );
+  assert.equal(created.statusCode, 201, JSON.stringify(created.body));
+  const row = await store.getRequestById(created.body.requestId);
+  assert.equal(row.approvalTokenExpiresAt.toISOString(), "2026-09-08T22:49:00.000Z");
+  assert.ok(row.approvalTokenExpiresAt.getTime() > new Date("2026-09-08T00:49:00.000Z").getTime());
+
+  const token = approvalTokenFromEmails(emails);
+  const approved = await withMockedNow("2026-09-08T08:00:00.000Z", () =>
+    post(approveHandler, { token }),
+  );
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  assert.equal(state.createCalls.length, 1);
+  assert.equal(state.availabilityCalls, 2);
+});
+
+test("configured approval lifetime is invalid after the configured expiration", async () => {
+  process.env.BOOKING_APPROVAL_TOKEN_TTL_MINUTES = "30";
+  installGateEnv();
+  installEmailEnv();
+  const { client, state } = makeSquareMock();
+  setSquareClientForTests(client);
+  const emails = captureEmailCalls();
+
+  const created = await withMockedNow("2026-09-07T22:49:00.000Z", () =>
+    post(bookingRequestsHandler, makeBody({
+      startAt: "2026-09-09T14:30:00.000Z",
+      requestKey: "req_test_configured_expiry_1",
+    })),
+  );
+  assert.equal(created.statusCode, 201, JSON.stringify(created.body));
+  const row = await store.getRequestById(created.body.requestId);
+  assert.equal(row.approvalTokenExpiresAt.toISOString(), "2026-09-07T23:19:00.000Z");
+
+  const token = approvalTokenFromEmails(emails);
+  const expired = await withMockedNow("2026-09-07T23:20:00.000Z", () =>
+    post(approveHandler, { token }),
+  );
+  assert.equal(expired.statusCode, 410);
+  assert.match(expired.body.message, /approval link has expired/i);
+  assert.equal(state.createCalls.length, 0);
 });
 
 test("an approved request no longer holds the slot (Square availability is the source of truth)", async () => {
@@ -527,7 +672,8 @@ test("pre-approval expired token still cannot create a Square booking", async ()
 
   const res = await post(approveHandler, { token });
 
-  assert.equal(res.statusCode, 404);
+  assert.equal(res.statusCode, 410);
+  assert.match(res.body.message, /approval link has expired/i);
   assert.equal(state.createCalls.length, 0);
 });
 

@@ -6,6 +6,8 @@ import { readJsonBody, BodyReadError } from "../../../lib/read-json-body.js";
 import { getServiceConfig } from "../../../lib/services.js";
 
 const INVALID_OR_EXPIRED = "This approval link is invalid or has expired.";
+const EXPIRED_APPROVAL_LINK =
+  "This approval link has expired. The appointment request is no longer active. Ask the client to submit a new request.";
 const TOKEN_REQUIRED = "An approval token is required.";
 
 /**
@@ -52,7 +54,7 @@ export default async function handler(req, res) {
 
   if (row.status === "pending") {
     if (!row.approvalTokenExpiresAt || new Date(row.approvalTokenExpiresAt).getTime() <= Date.now()) {
-      return res.status(404).json({ error: INVALID_OR_EXPIRED });
+      return res.status(410).json({ status: "expired", expired: true, error: EXPIRED_APPROVAL_LINK });
     }
   }
 
@@ -93,7 +95,7 @@ export default async function handler(req, res) {
       .json({ status: "failed", error: "This appointment request could not be processed and can no longer be declined." });
   }
   if (row.status === "expired") {
-    return res.status(404).json({ error: INVALID_OR_EXPIRED });
+    return res.status(410).json({ status: "expired", expired: true, error: EXPIRED_APPROVAL_LINK });
   }
 
   const updated = await store.markDeclined({ id: row.id });

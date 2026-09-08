@@ -500,7 +500,7 @@ export class MemoryBookingRequestStore {
     const now = Date.now();
     for (const row of this.rows.values()) {
       if (row.status !== "pending") continue;
-      if (row.approvalTokenExpiresAt && row.approvalTokenExpiresAt.getTime() <= now) {
+      if (!row.approvalTokenExpiresAt || row.approvalTokenExpiresAt.getTime() <= now) {
         row.status = "expired";
         row.decidedAt = new Date();
         row.updatedAt = new Date();

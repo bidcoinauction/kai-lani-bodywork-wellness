@@ -77,7 +77,7 @@ export default function ApprovalPage() {
         if (cancelled) return;
         if (!res.ok) {
           setPhase("done");
-          setErrorMessage(data?.error || "This approval link is invalid or has expired.");
+          setErrorMessage(data?.message || data?.error || "This approval link is invalid or has expired.");
           return;
         }
         setRequest(data);

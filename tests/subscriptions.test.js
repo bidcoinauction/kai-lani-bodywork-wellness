@@ -29,7 +29,7 @@ afterEach(() => {
   teardownBookingTest();
 });
 
-test("marketing consent is optional, unchecked by default, and separate from contact consent", async () => {
+test("marketing consent is optional, unchecked by default, and separate from appointment communication", async () => {
   installGateEnv();
   installEmailEnv();
   const { client } = makeSquareMock();
@@ -44,7 +44,11 @@ test("marketing consent is optional, unchecked by default, and separate from con
   // Explicit false creates nothing.
   await post(
     bookingRequestsHandler,
-    makeBody({ requestKey: "req_test_consent_false_1", startAt: futureSlotAt(7200) }),
+    makeBody({
+      requestKey: "req_test_consent_false_1",
+      startAt: futureSlotAt(7200),
+      marketingConsent: false,
+    }),
   );
   assert.equal(await store.getSubscriptionByEmail("ava@example.invalid"), null);
 

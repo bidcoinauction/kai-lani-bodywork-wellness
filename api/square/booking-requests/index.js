@@ -76,6 +76,8 @@ async function handleGetStatus(req, res) {
   }
 
   const store = getBookingRequestStore();
+  await store.expirePendingRequests();
+
   const row = await store.getRequestByKey(requestKey);
   if (!row) {
     return res.status(404).json({ error: "Request not found" });
@@ -125,9 +127,7 @@ async function handleCreate(req, res) {
   const existing = await store.getRequestByKey(input.requestKey);
   if (existing) {
     if (existing.requestKey === input.requestKey && existing.serviceKey === input.serviceKey) {
-      // Same key, same payload: idempotent replay. Explicit contact consent is
-      // required for every submission, so a replayed body has already passed
-      // the consent check above.
+      // Same key, same payload: idempotent replay.
       if (
         existing.firstName === input.firstName &&
         existing.lastName === input.lastName &&

@@ -697,6 +697,28 @@
   line-height: 1.5;
 }
 
+.sqb-appointment-communication {
+  margin: 14px 0 4px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(0, 109, 91, 0.16);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.sqb-appointment-communication h4 {
+  margin: 0 0 4px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.sqb-appointment-communication p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: rgba(16, 32, 43, 0.68);
+}
+
 .sqb-consent {
   display: flex;
   align-items: flex-start;
@@ -721,6 +743,10 @@
   font-size: 0.86rem;
   line-height: 1.45;
   color: var(--navy);
+}
+
+.sqb-consent strong {
+  color: var(--leaf);
 }
 
 /* Appointment summary */

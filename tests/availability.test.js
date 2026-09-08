@@ -220,6 +220,7 @@ test("public availability applies the same buffer to pending local holds and ign
     phone: "+19805550100",
     startAt: `${date}T14:00:00.000Z`,
     durationMinutes: 60,
+    approvalTokenExpiresAt: new Date(Date.now() + 600000),
   });
   const terminal = await store.createRequest({
     requestKey: "terminal-hold",

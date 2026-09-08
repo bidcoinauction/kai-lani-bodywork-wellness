@@ -25,6 +25,8 @@ export default async function handler(req, res) {
   }
 
   const store = getBookingRequestStore();
+  await store.expirePendingRequests();
+
   const row = await store.getRequestByKey(requestKey);
   if (!row) {
     return res.status(404).json({ error: "Request not found" });

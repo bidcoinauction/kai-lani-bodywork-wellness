@@ -23,6 +23,10 @@ import { readJsonBody, BodyReadError } from "../../../lib/read-json-body.js";
 import { getServiceConfig } from "../../../lib/services.js";
 
 const INVALID_OR_EXPIRED = "This approval link is invalid or has expired.";
+const EXPIRED_APPROVAL_LINK =
+  "This approval link has expired. The appointment request is no longer active. Ask the client to submit a new request.";
+const EXPIRED_PAST_APPOINTMENT =
+  "This approval link has expired and the requested appointment time has already passed. The appointment request is no longer active. Ask the client to submit a new request.";
 const TOKEN_REQUIRED = "An approval token is required.";
 const AWAITING_RECHECK_TTL_DAYS = 14;
 const CUSTOMER_CONFLICT_MESSAGE =
@@ -94,6 +98,17 @@ function isAwaitingRecheckExpired(row) {
 function isApprovalAccessExpired(row) {
   if (row.status === "awaiting_square_acceptance") return isAwaitingRecheckExpired(row);
   return isTokenExpired(row);
+}
+
+function expiredApprovalResponse(row) {
+  const startMs = row?.startAt ? new Date(row.startAt).getTime() : NaN;
+  return {
+    status: "expired",
+    expired: true,
+    message: Number.isFinite(startMs) && startMs <= Date.now()
+      ? EXPIRED_PAST_APPOINTMENT
+      : EXPIRED_APPROVAL_LINK,
+  };
 }
 
 function squareVersionForCreate(version) {
@@ -194,6 +209,8 @@ async function handleSummary(req, res) {
   }
 
   const store = getBookingRequestStore();
+  await store.expirePendingRequests();
+
   const row = await store.getRequestByApprovalTokenHash(hashToken(token));
   if (!row) {
     return res.status(404).json({ error: INVALID_OR_EXPIRED });
@@ -203,11 +220,11 @@ async function handleSummary(req, res) {
   }
   if (row.status === "pending" || row.status === "approving") {
     if (isApprovalAccessExpired(row)) {
-      return res.status(404).json({ error: INVALID_OR_EXPIRED });
+      return res.status(410).json(expiredApprovalResponse(row));
     }
   }
   if (row.status === "expired") {
-    return res.status(404).json({ error: INVALID_OR_EXPIRED });
+    return res.status(410).json(expiredApprovalResponse(row));
   }
 
   let calendarUrl = null;
@@ -266,7 +283,7 @@ async function handleApprove(req, res) {
   }
   if (row.status === "pending" || row.status === "approving") {
     if (isApprovalAccessExpired(row)) {
-      return res.status(404).json({ error: INVALID_OR_EXPIRED });
+      return res.status(410).json(expiredApprovalResponse(row));
     }
   }
 
@@ -288,7 +305,7 @@ async function handleApprove(req, res) {
     return res.status(200).json(failedOutcome(row));
   }
   if (row.status === "expired") {
-    return res.status(404).json({ error: INVALID_OR_EXPIRED });
+    return res.status(410).json(expiredApprovalResponse(row));
   }
 
   if (row.status === "approving") {

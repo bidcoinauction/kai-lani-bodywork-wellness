@@ -157,7 +157,6 @@ export default function SquareBooking() {
   const [slotError, setSlotError] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [contact, setContact] = useState({ firstName: "", lastName: "", email: "", phone: "" });
-  const [contactConsent, setContactConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState(null);
@@ -231,7 +230,6 @@ export default function SquareBooking() {
     setSlots([]);
     setSelectedSlot(null);
     setContact({ firstName: "", lastName: "", email: "", phone: "" });
-    setContactConsent(false);
     setMarketingConsent(false);
     setBookingResult(null);
     setBookingError(null);
@@ -322,13 +320,6 @@ export default function SquareBooking() {
       setBookingError("Please enter a valid phone number.");
       return;
     }
-    if (!contactConsent) {
-      setBookingError(
-        "Please consent to appointment-related communication by email or phone.",
-      );
-      return;
-    }
-
     if (!idempotencyRef.current) {
       idempotencyRef.current = makeIdempotencyKey();
     }
@@ -349,7 +340,6 @@ export default function SquareBooking() {
           email: trimmed.email,
           phone: trimmed.phone,
           requestKey: idempotencyRef.current,
-          contactConsent,
           marketingConsent,
         }),
       });
@@ -390,7 +380,7 @@ export default function SquareBooking() {
     step === "service" ? !serviceKey
     : step === "date" ? !date
     : step === "time" ? !selectedSlot
-    : step === "contact" ? submitting || !contactConsent
+    : step === "contact" ? submitting
     : true;
 
   const primaryLabel =
@@ -805,20 +795,14 @@ export default function SquareBooking() {
                   discuss intake details with you directly.
                 </p>
 
-                <label className="sqb-consent sqb-consent-required">
-                  <input
-                    type="checkbox"
-                    name="contactConsent"
-                    checked={contactConsent}
-                    onChange={(e) => setContactConsent(e.target.checked)}
-                    required
-                  />
-                  <span>
-                    I consent to appointment-related communications about this
-                    request by email or phone. My appointment is not confirmed
-                    until I receive an approval email from Chelsea.
-                  </span>
-                </label>
+                <div className="sqb-appointment-communication">
+                  <h4>Appointment communication</h4>
+                  <p>
+                    We&apos;ll use your email and phone only to manage this appointment
+                    request, including approval, scheduling changes, and
+                    appointment-related updates.
+                  </p>
+                </div>
 
                 <label className="sqb-consent sqb-consent-optional">
                   <input
@@ -828,6 +812,7 @@ export default function SquareBooking() {
                     onChange={(e) => setMarketingConsent(e.target.checked)}
                   />
                   <span>
+                    <strong>Optional:</strong>{" "}
                     Email me occasional wellness tips, studio updates and
                     appointment offers. I can unsubscribe anytime.
                   </span>
