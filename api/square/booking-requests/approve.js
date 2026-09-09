@@ -21,6 +21,7 @@ import {
 } from "../../../lib/email.js";
 import { readJsonBody, BodyReadError } from "../../../lib/read-json-body.js";
 import { getServiceConfig } from "../../../lib/services.js";
+import { paymentPageUrl } from "../../../lib/payment.js";
 
 const INVALID_OR_EXPIRED = "This approval link is invalid or has expired.";
 const EXPIRED_APPROVAL_LINK =
@@ -748,6 +749,7 @@ async function ensureConfirmationsSent(store, row, bookingId, calendarUrl) {
         ...requestEmailData(row),
         bookingId,
         calendarUrl,
+        paymentUrl: paymentPageUrl(row.requestKey),
       });
       await store.setConfirmationEmailStatus(row.id, confirmation);
     } else {

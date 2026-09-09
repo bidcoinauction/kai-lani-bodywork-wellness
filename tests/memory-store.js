@@ -110,6 +110,12 @@ export class MemoryBookingRequestStore {
       squareLastSyncedAt: null,
       squareSyncError: null,
       squareCanceledAt: null,
+      squarePaymentLinkId: null,
+      squareOrderId: null,
+      paymentLinkUrl: null,
+      paymentStatus: null,
+      paymentCreatedAt: null,
+      paymentCompletedAt: null,
       calendarUrl: null,
       requestReceiptEmailStatus: "none",
       approvalEmailStatus: "none",
@@ -143,6 +149,27 @@ export class MemoryBookingRequestStore {
       if (row.squareBookingId === String(squareBookingId)) return { ...row };
     }
     return null;
+  }
+
+  async recordPaymentLink({ id, squarePaymentLinkId, squareOrderId, paymentLinkUrl }) {
+    const row = this._findById(String(id));
+    if (!row || row.status !== "approved" || row.squareBookingStatus !== "ACCEPTED") return null;
+    row.squarePaymentLinkId ||= squarePaymentLinkId || null;
+    row.squareOrderId ||= squareOrderId || null;
+    row.paymentLinkUrl ||= paymentLinkUrl || null;
+    if (row.paymentStatus !== "paid") row.paymentStatus = "link_created";
+    row.paymentCreatedAt ||= new Date();
+    row.updatedAt = new Date();
+    return this._row(row.id);
+  }
+
+  async markPaymentPaid({ id }) {
+    const row = this._findById(String(id));
+    if (!row || row.status !== "approved") return null;
+    row.paymentStatus = "paid";
+    row.paymentCompletedAt ||= new Date();
+    row.updatedAt = new Date();
+    return this._row(row.id);
   }
 
   async claimWebhookEvent({ eventId, eventType, merchantId, squareBookingId, squareBookingVersion }) {

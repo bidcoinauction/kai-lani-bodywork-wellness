@@ -7,6 +7,7 @@ import Footer from "./components/Footer.jsx";
 import Header from "./components/Header.jsx";
 import Hero from "./components/Hero.jsx";
 import Intro from "./components/Intro.jsx";
+import PaymentPage from "./components/PaymentPage.jsx";
 import Reviews from "./components/Reviews.jsx";
 import Services from "./components/Services.jsx";
 import Visit from "./components/Visit.jsx";
@@ -41,6 +42,18 @@ export default function App() {
     window.location.pathname.startsWith("/approve")
   ) {
     return <ApprovalPage />;
+  }
+  if (
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/payment/complete")
+  ) {
+    return <PaymentPage complete />;
+  }
+  if (
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/payment")
+  ) {
+    return <PaymentPage />;
   }
 
   return (

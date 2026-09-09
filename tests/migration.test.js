@@ -20,6 +20,10 @@ const turnoverSql = readFileSync(
   resolve(here, "../db/migrations/004_turnover_buffer.sql"),
   "utf8",
 );
+const prepaymentSql = readFileSync(
+  resolve(here, "../db/migrations/005_optional_prepayment.sql"),
+  "utf8",
+);
 
 const STATUSES = [
   "pending",
@@ -155,6 +159,23 @@ test("migration 004 additively enforces the 30-minute turnover buffer", () => {
   assert.match(turnoverSql, /duration_minutes \+ 30/);
   assert.match(turnoverSql, /status IN \('pending', 'approving', 'awaiting_square_acceptance'\)/);
   assert.doesNotMatch(turnoverSql, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/i);
+});
+
+test("migration 005 additively stores optional prepayment references only", () => {
+  assert.match(prepaymentSql, /ADD COLUMN IF NOT EXISTS square_payment_link_id text/);
+  assert.match(prepaymentSql, /ADD COLUMN IF NOT EXISTS square_order_id text/);
+  assert.match(prepaymentSql, /ADD COLUMN IF NOT EXISTS payment_link_url text/);
+  assert.match(prepaymentSql, /payment_status text NOT NULL DEFAULT 'not_started'/);
+  assert.match(prepaymentSql, /'not_started'/);
+  assert.match(prepaymentSql, /'link_created'/);
+  assert.match(prepaymentSql, /'paid'/);
+  assert.match(prepaymentSql, /payment_created_at timestamptz/);
+  assert.match(prepaymentSql, /payment_completed_at timestamptz/);
+  const sqlWithoutComments = prepaymentSql
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+  assert.doesNotMatch(sqlWithoutComments, /card|cvv|expiration|raw_payload|payload json|DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/i);
 });
 
 // ---------------------------------------------------------------------------

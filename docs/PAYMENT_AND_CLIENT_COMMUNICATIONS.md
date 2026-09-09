@@ -1,11 +1,65 @@
 # Payment and Client Communications
 
-Status: **design / launch decision** — launch uses a **manual Square invoice
-workflow (Option A)**. No invoice or payment code exists in this task, and no
-automation is implemented. All Square capability facts below were verified
-against the official Square Invoices API documentation
-(developer.squareup.com) and the installed `square` SDK (v44.2.1,
-`/node_modules/square/api/resources/*` and `/node_modules/square/BaseClient.d.ts`).
+Status: **optional prepayment implemented for confirmed appointments**. Launch
+still supports pay-at-appointment and manual Square handling. Optional
+prepayment uses Square-hosted Checkout Payment Links only; Kai Lani servers never
+receive raw card numbers, CVV, expiration dates, or card-entry data. Square SDK
+facts below were verified against installed `square@44.2.1` types under
+`/node_modules/square/api/resources/*` and `/node_modules/square/api/types/*`.
+
+## 0. Optional Square Prepayment
+
+- Payment is optional and never required to confirm, preserve, or keep an
+  appointment.
+- Payment is offered only after the existing booking flow reaches local
+  `status='approved'` and authoritative Square `square_booking_status='ACCEPTED'`.
+- Clients may choose `Pay now securely with Square` or pay at the appointment.
+- The payment endpoint is `POST /api/square/booking-requests/prepay` and accepts
+  only the client-held `requestKey` capability. It ignores browser-supplied
+  amounts, customer IDs, booking IDs, location IDs, service variation IDs, and
+  order totals.
+- Authoritative service prices come from `lib/services.js` and are converted to
+  integer cents for Square: `$93 = 9300`, `$97 = 9700`, `$123 = 12300`, currency
+  `USD`.
+- Square-hosted checkout is created with
+  `client.checkout.paymentLinks.create({ idempotencyKey, order,
+  checkoutOptions, prePopulatedData, paymentNote })`.
+- The deterministic idempotency key is `kai-lani.prepay.{requestId}`.
+- Persistence stores only Square references and safe status fields:
+  `square_payment_link_id`, `square_order_id`, `payment_link_url`,
+  `payment_status`, `payment_created_at`, `payment_completed_at`.
+- Payment status is read on demand from Square Orders via
+  `client.orders.get({ orderId })`. The site displays `Payment received` only
+  when Square returns authoritative paid evidence (`COMPLETED` order or zero net
+  amount due). Returning from Square never implies payment by itself.
+- No payment webhook is enabled in Phase 1. If live operations show that
+  webhook-based reconciliation is required, stop and design that change before
+  enabling it in Production.
+- Refunds, changed services, changed prices, additional charges, and adjustments
+  remain manually handled by Chelsea in Square.
+- Pre-service tipping is disabled by request (`allowTipping: false`).
+
+Required Square capabilities/scopes for the access token are the Checkout/Payment
+Links write capability, Orders write capability for the hosted-checkout order,
+and Orders read capability for payment-status checks. Confirm exact naming in the
+Square Developer Console before enabling Production payment writes.
+
+Square checkout branding is controlled by Square Online Checkout location
+settings (`retrieveLocationSettings` / `updateLocationSettings`). Supported
+fields include showing the location logo, button color, and button shape. The Kai
+Lani primary brand color is `#0a1f24`. Do not silently mutate Square seller
+account identity or branding in Production; review Sandbox checkout first and
+only update settings when the displayed business identity matches Kai Lani.
+
+Sandbox proof still required before Production payment writes:
+
+1. Confirmed sandbox booking -> payment link created.
+2. Square-hosted checkout opens.
+3. Sandbox payment succeeds.
+4. Square authoritative order state shows payment.
+5. Kai Lani recognizes paid state.
+6. Confirmed booking -> payment link created -> client does not pay -> appointment remains confirmed.
+7. Repeated payment-link calls reuse one checkout and do not create duplicate payable orders.
 
 ## 1. Current State
 
@@ -16,25 +70,25 @@ against the official Square Invoices API documentation
   Square Dashboard and then click `Check Square status` on the approval page.
   Only after Square reports `ACCEPTED` does the website send client/provider
   confirmation emails, ICS attachments, and Google Calendar links.
-- No order, invoice, payment link, payment, receipt,
-  refund, cancellation charge, or stored card is ever created (verified by
-  grep across `api/`, `lib/`, `src/` — zero matches in billing paths; the two
-  "request_receipt"/"invoice" hits are email-status column names, not
-  billing).
+- Before appointment confirmation, no order, invoice, payment link, payment,
+  receipt, refund, cancellation charge, or stored card is created. After Square
+  confirms the appointment, the client may optionally create one Square-hosted
+  payment link for the service price only.
 - `booking_requests` stores `square_customer_id`, `square_booking_id`,
   `square_location_id`, `square_service_variation_id`, `square_team_member_id`,
   plus service selectable at booking time (`service_key`, `duration_minutes`).
   Prices exist in `lib/services.js` only (`price`: 93 / 93 / 97 / 123).
 - **Post-approval today:** approve → Square customer + pending appointment
   created → Chelsea accepts in Square Dashboard → `Check Square status` →
-  client/provider confirmation emails with `.ics` + Google Calendar link.
-  Nothing about money happens.
+  client/provider confirmation emails with `.ics` + Google Calendar link →
+  client may optionally prepay through Square-hosted checkout or pay at the
+  appointment.
 - **Precondition facts:** a Square Appointment (Bookings API) is **not** an
   order. Square Invoices can only be created for an order created with the
   Orders API (`order_id` required on `CreateInvoice`). There is no direct
-  "Appointment ID" field on an invoice. **Launch decision:** because the
-  website never creates orders or invoices at launch, this precondition is
-  handled entirely inside the Square Dashboard by Chelsea.
+  "Appointment ID" field on an invoice. **Launch decision:** because optional
+  prepayment uses Payment Links rather than invoices, invoice preparation remains
+  handled manually inside the Square Dashboard by Chelsea.
 
 ## 2. Verified Square Invoice Capabilities
 
@@ -81,18 +135,21 @@ Verified from official docs + SDK types:
 
 These capabilities are documented for a **future automation phase**. At
 launch, Chelsea uses the Square Dashboard / Square Invoices app directly; the
-website never calls the Orders or Invoices APIs.
+website does not call the Invoices API. Optional prepayment uses Checkout Payment
+Links, which creates a Square-hosted checkout order for confirmed appointments
+only.
 
 ## 3. Recommended Launch Workflow — OPTION A (MANUAL)
 
-**The launch workflow is Option A: Chelsea manually creates, reviews, and
-sends the Square invoice after the appointment.**
+**The invoice workflow remains Option A: Chelsea manually creates, reviews, and
+sends any Square invoice after the appointment.**
 
 - Open the completed appointment in Square.
 - Create the invoice in the Square Dashboard / Square Invoices app.
 - Review amount, client, service, and license text.
 - Send it only after the appointment.
-- The website never creates an order, invoices anyone, or takes payment.
+- The website never creates invoices or handles card entry. Optional prepayment
+  creates a Square-hosted Payment Link only after appointment confirmation.
 
 Reasons:
 
@@ -211,11 +268,13 @@ For the future automation phase only; not required at launch:
 
 ## 11. Payment-State Truthfulness
 
-- The website never records "paid" and never claims a payment occurred.
+- The website records `paid` only after authoritative Square order evidence and
+  never claims a payment occurred from a redirect URL alone.
 - Square is the source of truth. Chelsea only acts on what Square shows, and
   only marks an invoice paid when Square or Chelsea confirms the actual
   payment.
-- No client charge without Chelsea's explicit manual action.
+- No client charge happens on Kai Lani servers; optional prepayment is initiated
+  only when the client chooses Square-hosted checkout.
 
 ## 12. Chelsea's Launch Invoice Checklist
 
