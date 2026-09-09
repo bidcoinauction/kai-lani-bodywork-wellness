@@ -45,7 +45,7 @@ test("JSON-LD parses and defines the local business identity", () => {
   assert.equal(business.name, "Kai Lani Bodywork & Wellness");
   assert.equal(business.url, CANONICAL_URL);
   assert.equal(business.telephone, "+19802242462");
-  assert.equal(business.email, "kailanibodywork@gmail.com");
+  assert.equal(business.email, "appointments@kailanibodywork.com");
   assert.deepEqual(business.sameAs, ["https://www.instagram.com/kailani.bdywrk/"]);
   assert.equal(business.address.streetAddress, "106 S Main St, Suite F");
   assert.equal(business.address.addressLocality, "Mount Holly");
@@ -80,4 +80,32 @@ test("SEO changes do not alter booking feature-flag behavior", () => {
 
   assert.match(bookingSource, /bookingRequestsEnabled\(import\.meta\.env\)/);
   assert.match(bookingSource, /<SquareBooking \/>/);
+});
+
+test("current public identity surfaces use current contact and arrival details", () => {
+  const currentPublicFiles = [
+    "index.html",
+    "src/components/Footer.jsx",
+    "src/components/Booking.jsx",
+    "src/components/Visit.jsx",
+    "docs/LOCAL_SEO_GOOGLE_PROFILE.md",
+    "docs/LOCAL_SEO_CITATIONS.md",
+    "lib/email.js",
+    "lib/calendar.js",
+    "lib/payment.js",
+  ];
+  const publicText = currentPublicFiles.map(read).join("\n");
+
+  assert.match(publicText, /appointments@kailanibodywork\.com/);
+  assert.doesNotMatch(publicText, /kailanibodywork@gmail\.com/);
+  assert.doesNotMatch(publicText, OLD_DOMAIN);
+  assert.doesNotMatch(publicText, /Chelsea Askew/);
+  assert.doesNotMatch(publicText, /107 West 1st|Suite 102/);
+  assert.match(publicText, /106 S Main St, Suite F/);
+  assert.match(publicText, /Bolton's Curbside Cookery/);
+  assert.match(publicText, /narrow drive beside Uptown Salon/);
+  assert.match(publicText, /black metal staircase/);
+  assert.match(publicText, /ground-level door just beyond the staircase/);
+  assert.match(publicText, /Do not go up the stairs/);
+  assert.doesNotMatch(publicText, /streetAddress[^\n]*108 S Main St|108 S Main St[^\n]*(?:Address|streetAddress)/i);
 });

@@ -197,8 +197,11 @@ test("ICS description includes confirmed wording, reference, phone, and instruct
   assert.match(unfolded, /Booking reference: BK_123456/);
   assert.match(unfolded, /Phone: \(980\) 224-2462/);
   assert.match(unfolded, /106 S Main St\\, Suite F\\, Mount Holly\\, NC 28120/);
+  assert.match(unfolded, /behind Bolton's Curbside Cookery/);
   assert.match(unfolded, /narrow drive beside Uptown Salon/);
-  assert.match(unfolded, /black staircase/);
+  assert.match(unfolded, /black metal staircase/);
+  assert.match(unfolded, /ground-level door just beyond the staircase/);
+  assert.match(unfolded, /Do not go up the stairs/);
   assert.match(unfolded, /Date and time: Wednesday\\, August 5\\, 2026 at 2:00 PM EDT/);
 });
 

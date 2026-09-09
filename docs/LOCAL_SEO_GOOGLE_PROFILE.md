@@ -9,7 +9,7 @@ business name changes.
 - Business name: Kai Lani Bodywork & Wellness
 - Website: https://www.kailanibodywork.com/
 - Phone: (980) 224-2462
-- Email: kailanibodywork@gmail.com
+- Email: appointments@kailanibodywork.com
 - Address: 106 S Main St, Suite F, Mount Holly, NC 28120
 - Public Instagram: https://www.instagram.com/kailani.bdywrk/
 - Provider: Chelsea Teller, Licensed Massage Therapist, NC LMBT license no. 19862
@@ -55,9 +55,12 @@ Avoid medical promises, guaranteed outcomes, urgency claims, or ranking claims.
 - Chelsea professional portrait.
 - Business logo.
 - Clean interior/detail photos.
+- Bolton's Curbside Cookery as a nearby arrival landmark; do not label 108 S
+  Main St as Kai Lani's address.
 
 Photos of the rear entrance are especially important because Suite F has a
 separate rear exterior entrance and the Main Street storefronts can be confusing.
+Use Bolton's Curbside Cookery only as a visual landmark for arrival directions.
 
 ## Review Strategy
 

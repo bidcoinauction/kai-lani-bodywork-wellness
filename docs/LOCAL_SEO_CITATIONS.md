@@ -9,7 +9,7 @@ directory submission services.
 - Address: 106 S Main St, Suite F, Mount Holly, NC 28120
 - Phone: (980) 224-2462
 - Website: https://www.kailanibodywork.com/
-- Email where supported: kailanibodywork@gmail.com
+- Email where supported: appointments@kailanibodywork.com
 
 ## Priority Listings
 
@@ -35,6 +35,8 @@ directory submission services.
   `https://www.instagram.com/kailani.bdywrk/`.
 - Add rear-entrance instructions only in description or parking/access fields,
   not as a different street address.
+- Bolton's Curbside Cookery at 108 S Main St may be mentioned only as an arrival
+  landmark; it is not Kai Lani's address.
 
 ## Review Hygiene
 

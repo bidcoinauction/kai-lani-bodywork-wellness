@@ -55,7 +55,7 @@ function installProductionEmailEnv() {
   process.env.EMAIL_FROM = "Kai Lani <kailanibodywork@gmail.com>";
   process.env.EMAIL_SANDBOX_RECIPIENT = "sandbox@example.invalid";
   process.env.CHELSEA_NOTIFICATION_EMAIL = "kailanibodywork@gmail.com";
-  process.env.EMAIL_REPLY_TO = "kailanibodywork@gmail.com";
+  process.env.EMAIL_REPLY_TO = "appointments@kailanibodywork.com";
 }
 
 beforeEach(() => {
@@ -267,8 +267,13 @@ test("client confirmation includes address, instructions, and phone", () => {
   const text = emailTestInternals.clientText({ ...BOOKING, replyTo: "reply@example.invalid" });
 
   assert.match(text, /106 S Main St, Suite F, Mount Holly, NC 28120/);
+  assert.match(text, /behind Bolton's Curbside Cookery/);
   assert.match(text, /narrow drive beside Uptown Salon/);
-  assert.match(text, /black staircase/);
+  assert.match(text, /black metal staircase/);
+  assert.match(text, /ground-level door just beyond the staircase/);
+  assert.match(text, /Do not go up the stairs/);
+  assert.match(text, /Email: appointments@kailanibodywork\.com/);
+  assert.doesNotMatch(text, /Reply-to|kailanibodywork@gmail\.com/);
   assert.match(text, /\(980\) 224-2462/);
 });
 

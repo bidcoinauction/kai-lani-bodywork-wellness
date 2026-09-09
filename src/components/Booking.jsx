@@ -29,7 +29,7 @@ export default function Booking() {
                 </a>
                 <a
                   className="booking-email-link"
-                  href="mailto:kailanibodywork@gmail.com?subject=Appointment%20request"
+                  href="mailto:appointments@kailanibodywork.com?subject=Appointment%20request"
                 >
                   Email Kai Lani
                 </a>
