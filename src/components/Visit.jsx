@@ -13,7 +13,7 @@ export default function Visit() {
         <div className="visit-card-info">
           <p className="visit-card-heading">106 S Main St, Suite F</p>
           <p className="visit-card-sub">Mount Holly, NC 28120</p>
-          <p className="visit-card-note">Google Maps will bring you to 106 S Main St. From South Main Street, enter the narrow drive beside Uptown Salon and follow it behind the building. Look for the black metal staircase at the rear. The Suite F entrance is the ground-level door just beyond the staircase. Do not go up the stairs.</p>
+          <p className="visit-card-note">Kai Lani is located behind Bolton's Curbside Cookery in Downtown Mount Holly. Google Maps will bring you to 106 S Main St. From South Main Street, enter the narrow drive beside Uptown Salon and follow it behind the building. Look for the black metal staircase at the rear. The Suite F entrance is the ground-level door just beyond the staircase. Do not go up the stairs.</p>
           <div className="visit-card-actions">
             <a className="button visit-card-directions" href={mapsDirectionsUrl} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
