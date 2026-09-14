@@ -35,7 +35,8 @@
       "WOULD_CREATE_NEW_CUSTOMER": 8
     },
     "bookingCounts": {
-      "NO_EXISTING_BOOKING": 58
+      "NO_EXISTING_BOOKING": 57,
+      "EXACT_BOOKING_ALREADY_EXISTS": 1
     },
     "serviceMappingConflicts": 0,
     "manualMigrationRows": 1,
@@ -542,12 +543,22 @@
       "occupiedDurationMinutes": 60,
       "resolvedSquareCustomerSuffix": "...PAV7VG",
       "customerAction": "EXACT_EXISTING_CUSTOMER",
-      "existingBookingStatus": "NO_EXISTING_BOOKING",
-      "resolvedSquareBookingSuffix": null,
-      "proposedBookingAction": "WOULD_CREATE_BOOKING",
+      "existingBookingStatus": "EXACT_BOOKING_ALREADY_EXISTS",
+      "resolvedSquareBookingSuffix": "...dyrx7x",
+      "proposedBookingAction": "MIGRATED",
       "conflict": null,
-      "ready_to_migrate": true,
-      "reason": "ready"
+      "ready_to_migrate": false,
+      "reason": "migrated",
+      "migrationStatus": "MIGRATED",
+      "migratedAt": "2026-09-14T15:28:54.245Z",
+      "migratedSquareBookingSuffix": "...dyrx7x",
+      "verificationStatus": "VERIFIED_ACCEPTED",
+      "availabilityReconciliation": {
+        "liveWebsiteEndpointStatus": "OUTSIDE_PUBLIC_BOOKING_WINDOW",
+        "serverAvailabilityTargetBlocked": true,
+        "turnoverBehaviorCorrect": true,
+        "matchingBookingCount": 1
+      }
     },
     {
       "row": 28,
