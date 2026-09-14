@@ -35,16 +35,15 @@
       "CREATED_CUSTOMER": 7
     },
     "bookingCounts": {
-      "EXACT_BOOKING_ALREADY_EXISTS": 57,
-      "MANUAL_MIGRATION_REQUIRED": 1
+      "EXACT_BOOKING_ALREADY_EXISTS": 58
     },
     "serviceMappingConflicts": 0,
-    "manualMigrationRows": 1,
+    "manualMigrationRows": 0,
     "legacyBufferExceptions": 2,
     "dryRunSquareWrites": 0,
     "dryRunNeonWrites": 0,
     "squareCustomerWrites": 7,
-    "squareBookingWrites": 56,
+    "squareBookingWrites": 57,
     "squareOrderWrites": 0,
     "squarePaymentWrites": 0,
     "emailsSent": 0,
@@ -55,15 +54,18 @@
     "automaticEligibleRows": 56,
     "automaticMigratedRows": 56,
     "canaryMigratedRows": 1,
-    "finalReadOnlyReconciliation": "56/56 automatic rows ALREADY_EXISTED in Production Square after migration",
-    "finalReadOnlyReconciliationAt": "2026-09-14T20:29:05.261Z",
+    "finalReadOnlyReconciliation": "58/58 source rows represented in Production Square; Angela exact two-segment booking verified",
+    "finalReadOnlyReconciliationAt": "2026-09-14T21:21:27.908Z",
     "squarePaymentLinkWrites": 0,
-    "squareRepresentedAppointments": 57,
-    "manualExceptionsRemaining": 1,
+    "squareRepresentedAppointments": 58,
+    "manualExceptionsRemaining": 0,
     "allSourceAppointmentsReconciled": true,
-    "angelaFinalStatus": "MANUAL_MIGRATION_REQUIRED",
-    "angelaFinalReason": "Production Square catalog has no exact 15-minute facial massage add-on service variation; no booking was created to avoid approximation or service loss.",
-    "finalAngelaReadOnlyAuditAt": "2026-09-14T21:02:17.358Z"
+    "angelaFinalStatus": "MIGRATED",
+    "angelaFinalReason": "Angela migrated as exact two-segment Production Square booking with 90-minute Customized Massage plus 15-minute Facial Massage Add-On.",
+    "finalAngelaReadOnlyAuditAt": "2026-09-14T21:21:27.908Z",
+    "angelaMigratedRows": 1,
+    "squareCatalogWrites": 1,
+    "manualExceptionResolution": "completed"
   },
   "rows": [
     {
@@ -455,33 +457,52 @@
       "occupiedDurationMinutes": 105,
       "resolvedSquareCustomerSuffix": "...CD0X3G",
       "customerAction": "EXACT_EXISTING_CUSTOMER",
-      "existingBookingStatus": "NO_EXISTING_BOOKING",
-      "resolvedSquareBookingSuffix": null,
-      "proposedBookingAction": "MANUAL_MIGRATION_REQUIRED",
-      "conflict": "MANUAL_MIGRATION_REQUIRED",
+      "existingBookingStatus": "EXACT_BOOKING_ALREADY_EXISTS",
+      "resolvedSquareBookingSuffix": "...ir8w4e",
+      "proposedBookingAction": "MIGRATED",
+      "conflict": null,
       "ready_to_migrate": false,
-      "reason": "production_square_catalog_has_no_exact_15_min_facial_massage_add_on_variation",
-      "migrationStatus": "MANUAL_MIGRATION_REQUIRED",
-      "verificationStatus": "NOT_MIGRATED_CATALOG_ADD_ON_MISSING",
+      "reason": "migrated_to_square_production_two_segment_add_on",
+      "migrationStatus": "MIGRATED",
+      "verificationStatus": "VERIFIED",
       "legacyBuffer": "LEGACY_BUFFER_EXCEPTION_ACCEPTED",
       "representation": {
-        "supported": false,
+        "supported": true,
         "squareSupportsMultipleAppointmentSegments": true,
-        "primary": {
-          "service": "90 MIN CUSTOMIZED MASSAGE",
-          "variationSuffix": "...7JZAXD",
-          "durationMinutes": 90,
-          "availableForBooking": true,
-          "teamMemberUsable": true
-        },
-        "facialAddOn": {
-          "service": "15 MIN FACIAL MASSAGE ADD-ON",
-          "mapped": false,
-          "durationMinutes": 15,
-          "availableForBooking": false,
-          "reason": "no Production Square catalog service variation matching facial add-on with 15-minute duration"
-        },
-        "totalOccupiedDurationMinutes": 105
+        "segmentCount": 2,
+        "segments": [
+          {
+            "position": 1,
+            "service": "90 MIN CUSTOMIZED MASSAGE",
+            "variationSuffix": "...7JZAXD",
+            "durationMinutes": 90
+          },
+          {
+            "position": 2,
+            "service": "15 MIN FACIAL MASSAGE ADD-ON",
+            "itemSuffix": "...SE2SME",
+            "variationSuffix": "...PJHT5V",
+            "durationMinutes": 15,
+            "priceCents": 3000,
+            "currency": "USD"
+          }
+        ],
+        "totalOccupiedDurationMinutes": 105,
+        "start": "10:00",
+        "end": "11:45"
+      },
+      "squareBookingStatus": "ACCEPTED",
+      "migratedAt": "2026-09-14T21:21:27.906Z",
+      "migratedSquareBookingSuffix": "...ir8w4e",
+      "availabilityReconciliation": {
+        "serverSumsAppointmentSegments": true,
+        "angelaOccupies": "10:00-11:45",
+        "kaylaBookingSuffix": "...72tic6",
+        "kaylaStartPreserved": true,
+        "legacyBufferException": "LEGACY_BUFFER_EXCEPTION_ACCEPTED",
+        "newBookingAt1115Conflicts": true,
+        "newBookingAt1215Conflicts": true,
+        "matchingBookingCount": 1
       }
     },
     {
