@@ -31,13 +31,11 @@
     },
     "validationErrors": [],
     "customerCounts": {
-      "EXACT_EXISTING_CUSTOMER": 49,
-      "WOULD_CREATE_NEW_CUSTOMER": 8,
-      "AMBIGUOUS_CUSTOMER": 1
+      "EXACT_EXISTING_CUSTOMER": 50,
+      "WOULD_CREATE_NEW_CUSTOMER": 8
     },
     "bookingCounts": {
-      "NO_EXISTING_BOOKING": 57,
-      "NOT_CHECKED": 1
+      "NO_EXISTING_BOOKING": 58
     },
     "serviceMappingConflicts": 0,
     "manualMigrationRows": 1,
@@ -532,14 +530,14 @@
       "service": "60 MIN CUSTOMIZED MASSAGE",
       "serviceMapping": "customized_60",
       "occupiedDurationMinutes": 60,
-      "resolvedSquareCustomerSuffix": null,
-      "customerAction": "AMBIGUOUS_CUSTOMER",
-      "existingBookingStatus": "NOT_CHECKED",
+      "resolvedSquareCustomerSuffix": "...PAV7VG",
+      "customerAction": "EXACT_EXISTING_CUSTOMER",
+      "existingBookingStatus": "NO_EXISTING_BOOKING",
       "resolvedSquareBookingSuffix": null,
-      "proposedBookingAction": "BLOCKED",
+      "proposedBookingAction": "WOULD_CREATE_BOOKING",
       "conflict": null,
-      "ready_to_migrate": false,
-      "reason": "multiple_square_matches"
+      "ready_to_migrate": true,
+      "reason": "ready"
     },
     {
       "row": 28,
