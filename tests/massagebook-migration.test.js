@@ -17,15 +17,7 @@ import {
   startAtFromDateTime,
   validateAppointments,
 } from "../lib/massagebook-migration.js";
-import auditHandler, { auditEndpointForTests } from "../api/internal/massagebook-migration-audit.js";
-import {
-  clearSquareEnv,
-  installFullConfig,
-  makeRequest,
-  makeResponse,
-  resetSquareClientForTests,
-  setSquareClientForTests,
-} from "./helpers.js";
+import { clearSquareEnv, installFullConfig } from "./helpers.js";
 
 const ACTUAL_WORKBOOK = resolve("kai-lani-massagebook-to-square-migration-final.xlsx");
 
@@ -98,9 +90,6 @@ beforeEach(() => {
 
 afterEach(() => {
   clearSquareEnv();
-  resetSquareClientForTests();
-  delete process.env.VERCEL_ENV;
-  delete process.env.MASSAGEBOOK_MIGRATION_AUDIT_TOKEN;
 });
 
 test("actual workbook parses exactly 58 populated appointments and preserves the final row", () => {
@@ -245,55 +234,4 @@ test("execute remains blocked during the audit implementation", () => {
   const { firstName, lastName } = splitClientName("Joshua Castle");
   assert.equal(firstName, "Joshua");
   assert.equal(lastName, "Castle");
-});
-
-test("temporary production audit endpoint is token protected and hidden outside production", async () => {
-  assert.equal(auditEndpointForTests.safeEqualToken("abc", "abc"), true);
-  assert.equal(auditEndpointForTests.safeEqualToken("abc", "abd"), false);
-
-  process.env.VERCEL_ENV = "preview";
-  process.env.SQUARE_ENVIRONMENT = "production";
-  process.env.MASSAGEBOOK_MIGRATION_AUDIT_TOKEN = "test-token";
-  const res = makeResponse();
-  await auditHandler(makeRequest({ method: "POST", body: { rows: [] }, headers: { authorization: "Bearer test-token" } }), res);
-  assert.equal(res.statusCode, 404);
-});
-
-test("temporary production audit endpoint performs read-only reconciliation only", async () => {
-  process.env.VERCEL_ENV = "production";
-  process.env.SQUARE_ENVIRONMENT = "production";
-  process.env.BOOKING_APPROVAL_ENABLED = "true";
-  process.env.BOOKING_APPROVAL_MODE = "production";
-  process.env.MASSAGEBOOK_MIGRATION_AUDIT_TOKEN = "test-token";
-  process.env.SQUARE_LOCATION_ID = "LOC_SANDBOX";
-  process.env.SQUARE_TEAM_MEMBER_ID = "TM_CHELSEA";
-  process.env.SQUARE_SERVICE_CUSTOMIZED_60_ID = "VAR_CUSTOMIZED_60";
-  process.env.SQUARE_SERVICE_DEEP_TISSUE_60_ID = "VAR_DEEP_TISSUE_60";
-  process.env.SQUARE_SERVICE_CUSTOMIZED_90_ID = "VAR_CUSTOMIZED_90";
-  process.env.SQUARE_SERVICE_DEEP_TISSUE_90_ID = "VAR_DEEP_TISSUE_90";
-
-  const fixture = makeWorkbook(makeRows());
-  const { client, state } = clientForDryRun();
-  setSquareClientForTests(client);
-  try {
-    const rows = loadAppointments(fixture.path).rows;
-    const res = makeResponse();
-    await auditHandler(makeRequest({
-      method: "POST",
-      body: { rows },
-      headers: { authorization: "Bearer test-token" },
-    }), res);
-    assert.equal(res.statusCode, 200);
-    assert.equal(res.body.summary.actualRows, EXPECTED_APPOINTMENT_ROWS);
-    assert.equal(res.body.summary.squareCustomerWrites, 0);
-    assert.equal(res.body.summary.squareBookingWrites, 0);
-    assert.equal(res.body.summary.squareOrderWrites, 0);
-    assert.equal(res.body.summary.squarePaymentWrites, 0);
-    assert.equal(res.body.summary.dryRunNeonWrites, 0);
-    assert.equal(res.body.summary.emailsSent, 0);
-    assert.equal(state.customerCreates, 0);
-    assert.equal(state.bookingCreates, 0);
-  } finally {
-    rmSync(fixture.dir, { recursive: true, force: true });
-  }
 });
