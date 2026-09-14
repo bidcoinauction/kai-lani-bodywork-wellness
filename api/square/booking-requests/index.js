@@ -4,8 +4,10 @@ import { requireBookingConfig, ConfigError } from "../../../lib/config.js";
 import {
   buildApprovalUrl,
   findSlotAvailability,
+  serviceWithAddOns,
   validateBookingRequest,
 } from "../../../lib/booking-requests.js";
+import { addOnsForKeys } from "../../../lib/add-ons.js";
 import {
   getBookingRequestStore,
   StoreConflictError,
@@ -126,6 +128,7 @@ async function handleCreate(req, res) {
 
   const existing = await store.getRequestByKey(input.requestKey);
   if (existing) {
+    const sameAddOns = JSON.stringify(existing.addOnKeys || []) === JSON.stringify(input.addOnKeys || []);
     if (existing.requestKey === input.requestKey && existing.serviceKey === input.serviceKey) {
       // Same key, same payload: idempotent replay.
       if (
@@ -133,7 +136,8 @@ async function handleCreate(req, res) {
         existing.lastName === input.lastName &&
         existing.email === input.email &&
         existing.phone === input.phone &&
-        new Date(existing.startAt).getTime() === input.start.getTime()
+        new Date(existing.startAt).getTime() === input.start.getTime() &&
+        sameAddOns
       ) {
         if (input.marketingConsent) {
           await recordMarketingConsent(store, input.email);
@@ -152,10 +156,12 @@ async function handleCreate(req, res) {
   let matched;
   try {
     const client = getSquareClient();
+    const service = serviceWithAddOns(config.service, input.addOnKeys);
+    service.addOnKeys = input.addOnKeys;
     matched = await findSlotAvailability(client, {
       locationId: config.locationId,
       teamMemberId: config.teamMemberId,
-      service: config.service,
+      service,
       start: input.start,
     });
   } catch (error) {
@@ -199,6 +205,7 @@ async function handleCreate(req, res) {
       lastName: input.lastName,
       email: input.email,
       phone: input.phone,
+      addOnKeys: input.addOnKeys,
       startAt: input.start,
       durationMinutes: input.durationMinutes,
       approvalTokenHash,
@@ -230,6 +237,11 @@ async function handleCreate(req, res) {
     email: row.email,
     phone: row.phone,
     price: input.price,
+    addOns: addOnsForKeys(row.addOnKeys).map((addOn) => ({
+      name: addOn.name,
+      durationMinutes: addOn.durationMinutes,
+      price: addOn.price,
+    })),
   };
 
   const requestReceipt = await sendBookingRequestReceivedEmail(request);
@@ -252,6 +264,8 @@ async function handleCreate(req, res) {
     status: row.status,
     message: PENDING_MESSAGE,
     serviceName: input.serviceName,
+    addOns: request.addOns,
+    price: input.price,
     startAt: row.startAt,
     notification: {
       requestReceipt,

@@ -1,6 +1,7 @@
 import { isBookingApprovalEnabled } from "../../../lib/approval-config.js";
 import { getBookingRequestStore } from "../../../lib/store.js";
 import { getServiceConfig } from "../../../lib/services.js";
+import { addOnsForKeys } from "../../../lib/add-ons.js";
 
 /**
  * GET /api/square/booking-requests/lookup?requestKey=...
@@ -41,6 +42,11 @@ export default async function handler(req, res) {
     status: row.status,
     serviceKey: row.serviceKey,
     serviceName,
+    addOns: addOnsForKeys(row.addOnKeys).map((addOn) => ({
+      name: addOn.name,
+      durationMinutes: addOn.durationMinutes,
+      price: addOn.price,
+    })),
     durationMinutes: row.durationMinutes,
     startAt: row.startAt,
     bookingId: row.squareBookingId || null,

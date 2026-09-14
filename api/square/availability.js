@@ -5,7 +5,9 @@ import { isServiceKey } from "../../lib/services.js";
 import {
   hasTurnoverConflict,
   listSquareBlockingBookings,
+  serviceWithAddOns,
 } from "../../lib/booking-requests.js";
+import { addOnsForKeys, normalizeAddOnKeys } from "../../lib/add-ons.js";
 import {
   isValidDateString,
   getNewYorkDateString,
@@ -82,6 +84,7 @@ export default async function handler(req, res) {
   }
 
   const { serviceKey, date } = req.query;
+  const addOnKeys = normalizeAddOnKeys(typeof req.query?.addons === "string" && req.query.addons.length > 0 ? req.query.addons.split(",") : []);
 
   if (!serviceKey || !date) {
     return res.status(400).json({ error: "serviceKey and date are required" });
@@ -89,6 +92,9 @@ export default async function handler(req, res) {
 
   if (!isServiceKey(serviceKey)) {
     return res.status(400).json({ error: "Unknown service" });
+  }
+  if (!addOnKeys) {
+    return res.status(400).json({ error: "Unknown add-on" });
   }
 
   if (!isValidDateString(date)) {
@@ -132,6 +138,21 @@ export default async function handler(req, res) {
     const dayEnd = addDays(dayStart, 1);
 
     logAvailability("availability_search_started", { serviceKey, date, startedAt });
+    const service = serviceWithAddOns(config.service, addOnKeys);
+    service.addOnKeys = addOnKeys;
+    const segmentFilters = [{
+      serviceVariationId: config.service.serviceVariationId,
+      teamMemberIdFilter: { any: [config.teamMemberId] },
+    }];
+    for (const addOn of addOnsForKeys(addOnKeys)) {
+      if (!addOn.serviceVariationId) {
+        return res.status(500).json({ error: "Add-on booking is not fully configured" });
+      }
+      segmentFilters.push({
+        serviceVariationId: addOn.serviceVariationId,
+        teamMemberIdFilter: { any: [config.teamMemberId] },
+      });
+    }
     const response = await client.bookings.searchAvailability({
       query: {
         filter: {
@@ -140,12 +161,7 @@ export default async function handler(req, res) {
             endAt: dayEnd.toISOString(),
           },
           locationId: config.locationId,
-          segmentFilters: [
-            {
-              serviceVariationId: config.service.serviceVariationId,
-              teamMemberIdFilter: { any: [config.teamMemberId] },
-            },
-          ],
+          segmentFilters,
         },
       },
     });
@@ -166,14 +182,14 @@ export default async function handler(req, res) {
       if (typeof startAt !== "string") continue;
       if (hasTurnoverConflict({
         startAt,
-        durationMinutes: config.service.durationMinutes,
+        durationMinutes: service.durationMinutes,
         existing: existingSquareBookings,
       })) continue;
       const localConflicts = [];
       for (const status of ["pending", "approving", "awaiting_square_acceptance"]) {
         localConflicts.push(...await store.findPendingOverlaps({
           startAt,
-          durationMinutes: config.service.durationMinutes,
+          durationMinutes: service.durationMinutes,
           status,
         }));
       }
@@ -191,6 +207,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       date,
       serviceKey,
+      addOnKeys,
       slots: renderedSlots,
     });
   } catch (error) {

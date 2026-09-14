@@ -205,7 +205,7 @@ test("ICS description includes confirmed wording, reference, phone, and instruct
   assert.match(unfolded, /Date and time: Wednesday\\, August 5\\, 2026 at 2:00 PM EDT/);
 });
 
-test("appointment requires bookingId, serviceName, startAt, and 60/90 duration", () => {
+test("appointment requires bookingId, serviceName, startAt, and a positive whole-minute duration", () => {
   const cases = [
     { ...BOOKING, bookingId: "" },
     { ...BOOKING, bookingId: undefined },
@@ -213,9 +213,11 @@ test("appointment requires bookingId, serviceName, startAt, and 60/90 duration",
     { ...BOOKING, serviceName: undefined },
     { ...BOOKING, startAt: undefined },
     { ...BOOKING, startAt: "not-a-date" },
-    { ...BOOKING, duration: "45" },
-    { ...BOOKING, duration: 120 },
     { ...BOOKING, duration: "60 min" },
+    { ...BOOKING, duration: "abc" },
+    { ...BOOKING, duration: 0 },
+    { ...BOOKING, duration: -60 },
+    { ...BOOKING, duration: 2000 },
   ];
 
   for (const booking of cases) {
@@ -227,6 +229,14 @@ test("appointment requires bookingId, serviceName, startAt, and 60/90 duration",
       () => buildIcsCalendar(booking, { now: FIXED_NOW }),
       (error) => error instanceof CalendarError,
     );
+  }
+});
+
+test("calendar accepts combined multi-segment durations like 75 and 105 minutes", () => {
+  for (const duration of ["60", "75", "90", "105"]) {
+    const booking = { ...BOOKING, serviceName: "60 Min Customized Massage", duration };
+    assert.doesNotThrow(() => buildGoogleCalendarUrl(booking));
+    assert.doesNotThrow(() => buildIcsCalendar(booking, { now: FIXED_NOW }));
   }
 });
 

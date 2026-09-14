@@ -131,9 +131,10 @@ test("returns only date, serviceKey, and slots with safe fields", async () => {
   );
 
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(Object.keys(res.body).sort(), ["date", "serviceKey", "slots"]);
+  assert.deepEqual(Object.keys(res.body).sort(), ["addOnKeys", "date", "serviceKey", "slots"]);
   assert.equal(res.body.serviceKey, "customized_60");
   assert.equal(res.body.date, dateInDays(1));
+  assert.deepEqual(res.body.addOnKeys, []);
   assert.equal(res.body.slots.length, 1);
   assert.deepEqual(Object.keys(res.body.slots[0]).sort(), ["label", "startAt"]);
   assert.equal(res.body.slots[0].startAt, slotStart);

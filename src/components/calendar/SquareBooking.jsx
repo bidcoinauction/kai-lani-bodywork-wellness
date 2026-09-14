@@ -57,6 +57,18 @@ const SQUARE_SERVICES = [
   },
 ];
 
+const ADD_ONS = [
+  {
+    key: "facial-massage",
+    name: "Facial Massage",
+    durationMinutes: 15,
+    duration: "15 min",
+    priceCents: 3000,
+    price: "$30",
+    description: "Optional focused facial massage added to your session.",
+  },
+];
+
 const STEP_GROUPS = [
   { label: "60-minute sessions", services: SQUARE_SERVICES.filter((s) => s.duration === "60 min") },
   { label: "90-minute sessions", services: SQUARE_SERVICES.filter((s) => s.duration === "90 min") },
@@ -123,6 +135,15 @@ function makeIdempotencyKey() {
   return `kl-${rand()}${rand()}`;
 }
 
+function priceCents(value) {
+  const amount = Number(String(value || "").replace(/[^0-9]/g, ""));
+  return Number.isFinite(amount) ? amount * 100 : 0;
+}
+
+function dollars(cents) {
+  return `$${(cents / 100).toFixed(0)}`;
+}
+
 const NANP_TEN_DIGITS = /^[2-9]\d{2}[2-9]\d{2}\d{4}$/;
 
 function isValidPhone(value) {
@@ -151,6 +172,7 @@ const STEP_ORDER = ["service", "date", "time", "contact", "confirm"];
 export default function SquareBooking() {
   const [step, setStep] = useState("service");
   const [serviceKey, setServiceKey] = useState(null);
+  const [addOnKeys, setAddOnKeys] = useState([]);
   const [date, setDate] = useState(null);
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -223,9 +245,13 @@ export default function SquareBooking() {
   }
 
   const selectedService = SQUARE_SERVICES.find((s) => s.key === serviceKey) || null;
+  const selectedAddOns = ADD_ONS.filter((addOn) => addOnKeys.includes(addOn.key));
+  const totalDurationMinutes = (selectedService ? Number(selectedService.duration.split(" ")[0]) : 0) + selectedAddOns.reduce((sum, addOn) => sum + addOn.durationMinutes, 0);
+  const totalPriceCents = (selectedService ? priceCents(selectedService.price) : 0) + selectedAddOns.reduce((sum, addOn) => sum + addOn.priceCents, 0);
 
   function startOver() {
     setServiceKey(null);
+    setAddOnKeys([]);
     setDate(null);
     setSlots([]);
     setSelectedSlot(null);
@@ -241,6 +267,7 @@ export default function SquareBooking() {
 
   function selectService(key) {
     setServiceKey(key);
+    setAddOnKeys([]);
     setDate(null);
     setSlots([]);
     setSelectedSlot(null);
@@ -257,6 +284,16 @@ export default function SquareBooking() {
     idempotencyRef.current = null;
   }
 
+  function toggleAddOn(key) {
+    setAddOnKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+    setDate(null);
+    setSlots([]);
+    setSelectedSlot(null);
+    setBookingError(null);
+    setBookingResult(null);
+    idempotencyRef.current = null;
+  }
+
   async function continueToTime() {
     if (!serviceKey || !date) return;
     setLoadingSlots(true);
@@ -264,7 +301,7 @@ export default function SquareBooking() {
     setStatusMessage("Loading available times\u2026");
     try {
       const res = await fetch(
-        `/api/square/availability?serviceKey=${encodeURIComponent(serviceKey)}&date=${encodeURIComponent(date)}`,
+        `/api/square/availability?serviceKey=${encodeURIComponent(serviceKey)}&date=${encodeURIComponent(date)}&addons=${encodeURIComponent(addOnKeys.join(","))}`,
       );
       const data = await res.json().catch(() => null);
       if (!res.ok || !data) {
@@ -340,6 +377,7 @@ export default function SquareBooking() {
           email: trimmed.email,
           phone: trimmed.phone,
           requestKey: idempotencyRef.current,
+          addons: addOnKeys,
           marketingConsent,
         }),
       });
@@ -408,9 +446,11 @@ export default function SquareBooking() {
 
   const summaryRows = [
     { key: "service", label: "Service", value: selectedService?.name, sub: selectedService?.duration },
+    { key: "addons", label: "Add-on", value: selectedAddOns.length ? selectedAddOns.map((addOn) => addOn.name).join(", ") : null, sub: selectedAddOns.length ? selectedAddOns.map((addOn) => `${addOn.duration} · ${addOn.price}`).join(", ") : null },
     { key: "date", label: "Date", value: date ? formatDateLabel(date) : null },
     { key: "time", label: "Time", value: selectedSlot?.label || null },
-    { key: "price", label: "Price", value: selectedService?.price || null },
+    { key: "duration", label: "Duration", value: selectedService ? `${totalDurationMinutes} min` : null },
+    { key: "price", label: "Price", value: selectedService ? dollars(totalPriceCents) : null },
   ];
 
   function goBack() {
@@ -493,7 +533,9 @@ export default function SquareBooking() {
       ? `${formatDateShort(date)} · ${selectedSlot.label}`
       : date
         ? formatDateShort(date)
-        : "Select a day and time";
+        : selectedAddOns.length
+          ? `${selectedAddOns[0].name} add-on selected`
+          : "Select a day and time";
 
   const confirmationEmailNote = (() => {
     const requestReceipt = bookingResult?.notification?.requestReceipt;
@@ -624,6 +666,30 @@ export default function SquareBooking() {
                     </button>
                   </div>
                 </div>
+
+                {serviceKey && (
+                  <div className="sqb-addon-group" role="group" aria-label="Optional add-ons">
+                    <p className="sqb-service-group-label">Optional add-on</p>
+                    {ADD_ONS.map((addOn) => {
+                      const isSelected = addOnKeys.includes(addOn.key);
+                      return (
+                        <button
+                          key={addOn.key}
+                          type="button"
+                          className={`sqb-addon-card${isSelected ? " is-selected" : ""}`}
+                          aria-pressed={isSelected}
+                          onClick={() => toggleAddOn(addOn.key)}
+                        >
+                          <span>
+                            <span className="sqb-addon-name">{addOn.name}</span>
+                            <span className="sqb-addon-meta">{addOn.duration} · {addOn.price}</span>
+                          </span>
+                          <span className="sqb-addon-state">{isSelected ? "Selected" : "Add"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             )}
 
@@ -718,6 +784,12 @@ export default function SquareBooking() {
                       <dt>Service</dt>
                       <dd>{selectedService?.name}</dd>
                     </div>
+                    {selectedAddOns.length > 0 && (
+                      <div>
+                        <dt>Add-on</dt>
+                        <dd>{selectedAddOns.map((addOn) => `${addOn.name} — ${addOn.duration}`).join(", ")}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt>Date &amp; time</dt>
                       <dd>
@@ -726,7 +798,7 @@ export default function SquareBooking() {
                     </div>
                     <div>
                       <dt>Price</dt>
-                      <dd>{selectedService?.price || "\u2014"}</dd>
+                      <dd>{selectedService ? dollars(totalPriceCents) : "\u2014"}</dd>
                     </div>
                   </dl>
                 </div>

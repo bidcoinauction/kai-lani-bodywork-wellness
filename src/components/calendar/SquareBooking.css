@@ -411,6 +411,77 @@
   line-height: 1.45;
 }
 
+/* Optional add-ons */
+.sqb-addon-group {
+  margin-top: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.sqb-addon-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid rgba(16, 32, 43, 0.14);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+
+.sqb-addon-card:hover {
+  border-color: rgba(0, 109, 91, 0.4);
+}
+
+.sqb-addon-card:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.sqb-addon-card.is-selected {
+  border-color: var(--leaf);
+  background: var(--cream);
+  box-shadow: 0 0 0 1px var(--leaf) inset;
+}
+
+.sqb-addon-card > span:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.sqb-addon-name {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.sqb-addon-meta {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(16, 32, 43, 0.58);
+}
+
+.sqb-addon-state {
+  flex: none;
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 32, 43, 0.2);
+  color: rgba(16, 32, 43, 0.6);
+}
+
+.sqb-addon-card.is-selected .sqb-addon-state {
+  border-color: var(--leaf);
+  background: var(--leaf);
+  color: var(--cream);
+}
+
 /* Step 2 — date */
 .sqb-date-hint {
   margin: 0 0 14px;

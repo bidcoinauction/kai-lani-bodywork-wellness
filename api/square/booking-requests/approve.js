@@ -2,11 +2,13 @@ import { isBookingApprovalEnabled } from "../../../lib/approval-config.js";
 import { getSquareClient } from "../../../lib/square.js";
 import { requireBookingConfig, ConfigError } from "../../../lib/config.js";
 import {
+  buildAppointmentSegments,
   buildCustomerIdempotencyKey,
   buildCustomerReferenceId,
   buildSquareIdempotencyKey,
   findSlotAvailability,
   formatSquarePhoneE164,
+  serviceWithAddOns,
 } from "../../../lib/booking-requests.js";
 import { getBookingRequestStore } from "../../../lib/store.js";
 import { hashToken } from "../../../lib/tokens.js";
@@ -21,6 +23,7 @@ import {
 } from "../../../lib/email.js";
 import { readJsonBody, BodyReadError } from "../../../lib/read-json-body.js";
 import { getServiceConfig } from "../../../lib/services.js";
+import { addOnsForKeys } from "../../../lib/add-ons.js";
 import { paymentPageUrl } from "../../../lib/payment.js";
 
 const INVALID_OR_EXPIRED = "This approval link is invalid or has expired.";
@@ -112,14 +115,6 @@ function expiredApprovalResponse(row) {
   };
 }
 
-function squareVersionForCreate(version) {
-  if (typeof version === "bigint") return version;
-  if (typeof version === "number" && Number.isSafeInteger(version) && version >= 0) {
-    return BigInt(version);
-  }
-  return version;
-}
-
 function serviceNameFor(row) {
   const service = getServiceConfig(row.serviceKey);
   return service ? service.name : row.serviceKey;
@@ -134,6 +129,14 @@ function appointmentFor(row, bookingId) {
   };
 }
 
+function addOnSummaries(row) {
+  return addOnsForKeys(row.addOnKeys).map((addOn) => ({
+    name: addOn.name,
+    durationMinutes: addOn.durationMinutes,
+    price: addOn.price,
+  }));
+}
+
 function approvedOutcome(row, { bookingId, calendarUrl, confirmation, provider }) {
   return {
     status: "approved",
@@ -142,6 +145,7 @@ function approvedOutcome(row, { bookingId, calendarUrl, confirmation, provider }
     bookingId,
     calendarUrl,
     serviceName: serviceNameFor(row),
+    addOns: addOnSummaries(row),
     startAt: row.startAt,
     message: "Your appointment is confirmed.",
     notification: { confirmation, provider },
@@ -155,6 +159,7 @@ function awaitingSquareAcceptanceOutcome(row) {
     requestKey: row.requestKey,
     bookingId: row.squareBookingId || null,
     serviceName: serviceNameFor(row),
+    addOns: addOnSummaries(row),
     startAt: row.startAt,
     message:
       "The appointment is pending acceptance in Square. Open Square Dashboard, accept the pending appointment, then return here and check its status.",
@@ -246,6 +251,7 @@ async function handleSummary(req, res) {
     email: row.email,
     phone: row.phone,
     serviceName: serviceNameFor(row),
+    addOns: addOnSummaries(row),
     durationMinutes: row.durationMinutes,
     startAt: row.startAt,
     bookingId: row.squareBookingId || null,
@@ -382,10 +388,12 @@ async function performFreshApproval(req, res, store, row) {
   const start = new Date(row.startAt);
   let matched;
   try {
+    const service = serviceWithAddOns(config.service, row.addOnKeys || []);
+    service.addOnKeys = row.addOnKeys || [];
     matched = await findSlotAvailability(client, {
       locationId: config.locationId,
       teamMemberId: config.teamMemberId,
-      service: config.service,
+      service,
       start,
     });
   } catch (error) {
@@ -455,25 +463,20 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
   // a version and never weaken the create call: if the catalog cannot confirm a
   // version, the request fails closed as a server_config error before Square is
   // called.
-  if (typeof serviceVariationVersion !== "bigint" && typeof serviceVariationVersion !== "number") {
-    try {
-      const catalogObject = await client.catalog.object.get({
-        objectId: config.service.serviceVariationId,
-      });
-      serviceVariationVersion = catalogObject?.object?.version ?? null;
-    } catch (error) {
-      serviceVariationVersion = null;
-    }
-    if (
-      typeof serviceVariationVersion !== "bigint" &&
-      typeof serviceVariationVersion !== "number"
-    ) {
-      console.error("Booking request approval missing service variation version");
-      await store.markFailed({ id: row.id, failureCode: "server_config" });
-      return res
-        .status(500)
-        .json({ error: "Could not approve the appointment right now. Please try again." });
-    }
+  let appointmentSegments;
+  try {
+    appointmentSegments = await buildAppointmentSegments(client, {
+      service: config.service,
+      addOnKeys: row.addOnKeys || [],
+      teamMemberId: config.teamMemberId,
+      primaryServiceVariationVersion: serviceVariationVersion,
+    });
+  } catch {
+    console.error("Booking request approval missing service variation version");
+    await store.markFailed({ id: row.id, failureCode: "server_config" });
+    return res
+      .status(500)
+      .json({ error: "Could not approve the appointment right now. Please try again." });
   }
 
   let customerId;
@@ -511,14 +514,7 @@ async function createAndFinalize(req, res, store, row, serviceVariationVersion) 
           startAt: new Date(row.startAt).toISOString(),
           locationId: config.locationId,
           customerId,
-          appointmentSegments: [
-            {
-              durationMinutes: config.service.durationMinutes,
-              serviceVariationId: config.service.serviceVariationId,
-              teamMemberId: config.teamMemberId,
-              serviceVariationVersion: squareVersionForCreate(serviceVariationVersion),
-            },
-          ],
+          appointmentSegments,
         },
       },
       { queryParams: { seller_level: false } },
@@ -791,6 +787,7 @@ function requestEmailData(row) {
     requestKey: row.requestKey,
     serviceKey: row.serviceKey,
     serviceName: serviceNameFor(row),
+    addOns: addOnSummaries(row),
     durationMinutes: row.durationMinutes,
     startAt: row.startAt,
     firstName: row.firstName,
