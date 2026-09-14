@@ -417,7 +417,7 @@ async function runMigration(body) {
           : effectiveClassification === "NO_EXISTING_BOOKING"
             ? "PENDING"
             : "BLOCKED_CONFLICT";
-      results.push({ row: row.row, client: row.client_name, migrationStatus: status, customerClassification: resolveResult.classification, customerSuffix: suffix(resolveResult.customer?.id), bookingClassification: effectiveClassification, bookingSuffix: suffix(bookingResult.booking?.id), wrote: false });
+      results.push({ row: row.row, client: row.client_name, migrationStatus: status, customerClassification: resolveResult.classification, customerSuffix: suffix(resolveResult.customer?.id), bookingClassification: effectiveClassification, bookingSuffix: suffix(existing.booking?.id), wrote: false });
       continue;
     }
     const result = await processRow(client, row, config).catch((error) => ({
