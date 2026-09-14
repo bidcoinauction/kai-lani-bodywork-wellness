@@ -4,7 +4,8 @@ import { getSquareClient } from "../../lib/square.js";
 import { addDays, startOfDayInTimeZone } from "../../lib/time.js";
 
 const TOKEN_ENV = "SATURDAY_DIAGNOSIS_TOKEN";
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const HOURS_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DATES = [
   { date: "2026-09-17", note: "working weekday comparison" },
   { date: "2026-09-19", note: "Saturday with existing bookings" },
@@ -92,14 +93,16 @@ async function runDiagnosis() {
   const client = getSquareClient();
   const primary = requireBookingConfig("customized_60");
 
-  const location = await client.locations.get({ locationId: primary.locationId });
-  const teamMember = await client.teamMembers.get({ teamMemberId: primary.teamMemberId });
+  const locationResponse = await client.locations.get({ locationId: primary.locationId });
+  const location = locationResponse?.location || {};
+  const teamMemberResponse = await client.teamMembers.get({ teamMemberId: primary.teamMemberId });
+  const teamMember = teamMemberResponse?.teamMember || {};
   const teamProfileResponse = await client.bookings.teamMemberProfiles.get({ teamMemberId: primary.teamMemberId });
   const locationProfileList = await client.bookings.locationProfiles.list({});
   const locationProfile = (locationProfileList?.data || []).find((entry) => entry.locationId === primary.locationId) || null;
 
   const locationPeriods = (location?.businessHours?.periods || []).map((period) => ({
-    weekday: WEEKDAYS[Number(period.weekday_number || 0) - 1] || null,
+    weekday: HOURS_WEEKDAYS[Number(period.weekday_number || 0) - 1] || null,
     weekdayNumber: period.weekday_number,
     startLocalTime: period.start_local_time,
     startLabel: timeLabel(period.start_local_time),
@@ -110,7 +113,7 @@ async function runDiagnosis() {
   const weeklyLocationHours = {};
   for (let i = 0; i < 7; i += 1) {
     const periods = locationPeriods.filter((period) => period.weekdayNumber === i + 1);
-    weeklyLocationHours[WEEKDAYS[i]] = periods.length
+    weeklyLocationHours[HOURS_WEEKDAYS[i]] = periods.length
       ? periods.map((period) => `${period.startLabel} - ${period.endLabel}`)
       : [];
   }
