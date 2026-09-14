@@ -57,7 +57,13 @@
     "canaryMigratedRows": 1,
     "finalReadOnlyReconciliation": "56/56 automatic rows ALREADY_EXISTED in Production Square after migration",
     "finalReadOnlyReconciliationAt": "2026-09-14T20:29:05.261Z",
-    "squarePaymentLinkWrites": 0
+    "squarePaymentLinkWrites": 0,
+    "squareRepresentedAppointments": 57,
+    "manualExceptionsRemaining": 1,
+    "allSourceAppointmentsReconciled": true,
+    "angelaFinalStatus": "MANUAL_MIGRATION_REQUIRED",
+    "angelaFinalReason": "Production Square catalog has no exact 15-minute facial massage add-on service variation; no booking was created to avoid approximation or service loss.",
+    "finalAngelaReadOnlyAuditAt": "2026-09-14T21:02:17.358Z"
   },
   "rows": [
     {
@@ -454,7 +460,29 @@
       "proposedBookingAction": "MANUAL_MIGRATION_REQUIRED",
       "conflict": "MANUAL_MIGRATION_REQUIRED",
       "ready_to_migrate": false,
-      "reason": "add_on_not_represented_by_current_single-segment_booking_model"
+      "reason": "production_square_catalog_has_no_exact_15_min_facial_massage_add_on_variation",
+      "migrationStatus": "MANUAL_MIGRATION_REQUIRED",
+      "verificationStatus": "NOT_MIGRATED_CATALOG_ADD_ON_MISSING",
+      "legacyBuffer": "LEGACY_BUFFER_EXCEPTION_ACCEPTED",
+      "representation": {
+        "supported": false,
+        "squareSupportsMultipleAppointmentSegments": true,
+        "primary": {
+          "service": "90 MIN CUSTOMIZED MASSAGE",
+          "variationSuffix": "...7JZAXD",
+          "durationMinutes": 90,
+          "availableForBooking": true,
+          "teamMemberUsable": true
+        },
+        "facialAddOn": {
+          "service": "15 MIN FACIAL MASSAGE ADD-ON",
+          "mapped": false,
+          "durationMinutes": 15,
+          "availableForBooking": false,
+          "reason": "no Production Square catalog service variation matching facial add-on with 15-minute duration"
+        },
+        "totalOccupiedDurationMinutes": 105
+      }
     },
     {
       "row": 20,
