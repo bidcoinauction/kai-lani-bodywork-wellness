@@ -1,3 +1,5 @@
+// Temporary one-time execution surface for the MassageBook -> Square migration.
+// Removed after the migration completes; never used for live booking requests.
 import { timingSafeEqual } from "node:crypto";
 import { getSquareClient } from "../../lib/square.js";
 import { requireBookingConfig } from "../../lib/config.js";
