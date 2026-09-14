@@ -201,18 +201,37 @@ async function resolveCustomer(client, row) {
   return { classification: "WOULD_CREATE_NEW_CUSTOMER", customer: null, created: false };
 }
 
+function isInvalidPhoneError(error) {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    Array.isArray(error.errors) &&
+    error.errors.some((entry) => entry && entry.code === "INVALID_PHONE_NUMBER")
+  );
+}
+
 async function createCustomer(client, row) {
   const { firstName, lastName } = splitClientName(row.client_name);
   const squarePhone = formatSquarePhoneE164(row.mobile);
-  const created = await client.customers.create({
+  const payload = {
     idempotencyKey: customerIdempotencyKey(row),
     givenName: firstName,
     familyName: lastName,
     emailAddress: row.email.toLowerCase(),
-    phoneNumber: squarePhone,
-  });
-  if (!created.customer || !created.customer.id) return null;
-  return created.customer;
+  };
+  let created;
+  try {
+    created = await client.customers.create({ ...payload, phoneNumber: squarePhone });
+  } catch (error) {
+    if (isInvalidPhoneError(error)) {
+      created = await client.customers.create(payload);
+      if (!created.customer || !created.customer.id) return { customer: null, phoneOmitted: true };
+      return { customer: created.customer, phoneOmitted: true };
+    }
+    throw error;
+  }
+  if (!created.customer || !created.customer.id) return { customer: null, phoneOmitted: false };
+  return { customer: created.customer, phoneOmitted: false };
 }
 
 async function catalogVersion(client, serviceVariationId) {
@@ -288,41 +307,54 @@ async function processRow(client, row, config) {
 
   let customer = resolveResult.customer;
   let customerCreated = false;
+  let phoneOmitted = false;
   if (resolveResult.classification === "WOULD_CREATE_NEW_CUSTOMER") {
-    customer = await createCustomer(client, row);
+    const createdCustomer = await createCustomer(client, row);
+    customer = createdCustomer.customer;
+    phoneOmitted = createdCustomer.phoneOmitted;
     if (!customer || !customer.id) {
       return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated: false, error: "customer_create_missing_id", wrote: false };
     }
     customerCreated = true;
   }
 
-  const version = await catalogVersion(client, config.service.serviceVariationId);
+  let version;
+  try {
+    version = await catalogVersion(client, config.service.serviceVariationId);
+  } catch {
+    version = null;
+  }
   if (version == null) {
-    return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated, error: "service_variation_version_missing", wrote: true };
+    return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated, error: "service_variation_version_missing", wrote: customerCreated };
   }
 
-  const createResponse = await client.bookings.create(
-    {
-      idempotencyKey: bookingIdempotencyKey(row),
-      booking: {
-        startAt: startAtFromDateTime(row.date, row.time),
-        locationId: config.locationId,
-        customerId: customer.id,
-        appointmentSegments: [
-          {
-            durationMinutes: config.service.durationMinutes,
-            serviceVariationId: config.service.serviceVariationId,
-            teamMemberId: config.teamMemberId,
-            serviceVariationVersion: squareVersionForCreate(version),
-          },
-        ],
+  let createResponse;
+  try {
+    createResponse = await client.bookings.create(
+      {
+        idempotencyKey: bookingIdempotencyKey(row),
+        booking: {
+          startAt: startAtFromDateTime(row.date, row.time),
+          locationId: config.locationId,
+          customerId: customer.id,
+          appointmentSegments: [
+            {
+              durationMinutes: config.service.durationMinutes,
+              serviceVariationId: config.service.serviceVariationId,
+              teamMemberId: config.teamMemberId,
+              serviceVariationVersion: squareVersionForCreate(version),
+            },
+          ],
+        },
       },
-    },
-    { queryParams: { seller_level: false } },
-  );
+      { queryParams: { seller_level: false } },
+    );
+  } catch (error) {
+    return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated, error: "booking_create_rejected", wrote: customerCreated };
+  }
   const bookingId = createResponse?.booking?.id;
   if (!bookingId) {
-    return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated, error: "booking_create_missing_id", wrote: true };
+    return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated, error: "booking_create_missing_id", wrote: customerCreated };
   }
 
   const retrieved = await client.bookings.get({ bookingId });
@@ -337,7 +369,7 @@ async function processRow(client, row, config) {
     return { row: row.row, client: row.client_name, migrationStatus: "FAILED", customerClassification: resolveResult.classification, customerCreated, matchingBookingCount: matchCount, wrote: true, halt: true, haltReason: "duplicate_booking_count" };
   }
 
-  return { row: row.row, client: row.client_name, migrationStatus: "MIGRATED", customerClassification: resolveResult.classification, customerSuffix: suffix(customer.id), customerCreated, bookingSuffix: suffix(bookingId), squareBookingStatus: verification.status, wrote: true };
+  return { row: row.row, client: row.client_name, migrationStatus: "MIGRATED", customerClassification: resolveResult.classification, customerSuffix: suffix(customer.id), customerCreated, phoneOmitted, bookingSuffix: suffix(bookingId), squareBookingStatus: verification.status, wrote: true };
 }
 
 async function runMigration(body) {
@@ -388,7 +420,14 @@ async function runMigration(body) {
       results.push({ row: row.row, client: row.client_name, migrationStatus: status, customerClassification: resolveResult.classification, bookingClassification: effectiveClassification, wrote: false });
       continue;
     }
-    const result = await processRow(client, row, config);
+    const result = await processRow(client, row, config).catch((error) => ({
+      row: row.row,
+      client: row.client_name,
+      migrationStatus: "FAILED",
+      customerCreated: false,
+      error: "row_processing_error",
+      wrote: false,
+    }));
     if (result.customerCreated) writes.squareCustomerWrites += 1;
     if (result.migrationStatus === "MIGRATED") writes.squareBookingWrites += 1;
     if (result.halt) { halted = true; haltReason = result.haltReason; }
@@ -438,5 +477,7 @@ export const massagebookMigrationExecutionForTests = {
   countExactMatches,
   namesMatch,
   isLegacyBufferException,
+  isInvalidPhoneError,
+  createCustomer,
   ROWS,
 };

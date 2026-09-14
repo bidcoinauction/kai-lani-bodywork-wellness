@@ -284,3 +284,30 @@ test("legacy buffer exception rows bypass the modern turnover gate", () => {
   assert.equal(isLegacy({ row: 20 }), true);
   assert.equal(isLegacy({ row: 41 }), false);
 });
+
+test("invalid Square phone numbers are detected and customer create retries without phone", async () => {
+  const isInvalid = massagebookMigrationExecutionForTests.isInvalidPhoneError;
+  assert.equal(isInvalid({ errors: [{ code: "INVALID_PHONE_NUMBER" }] }), true);
+  assert.equal(isInvalid({ errors: [{ code: "OTHER" }] }), false);
+
+  const row = { row: 48, client_name: "Valorie Franklin", email: "v.zambito@gmail.com", mobile: "(400) 580-8323" };
+  const calls = [];
+  const client = {
+    customers: {
+      create: async (payload) => {
+        calls.push(payload);
+        if (payload.phoneNumber) {
+          const err = new Error("invalid");
+          err.errors = [{ code: "INVALID_PHONE_NUMBER" }];
+          throw err;
+        }
+        return { customer: { id: "CUST_VALORIE" } };
+      },
+    },
+  };
+  const result = await massagebookMigrationExecutionForTests.createCustomer(client, row);
+  assert.equal(result.phoneOmitted, true);
+  assert.equal(result.customer.id, "CUST_VALORIE");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].phoneNumber, undefined);
+});
