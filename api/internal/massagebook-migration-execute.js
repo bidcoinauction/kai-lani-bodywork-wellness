@@ -19,6 +19,7 @@ import { BodyReadError, readJsonBody } from "../../lib/read-json-body.js";
 const MAX_BATCH = 10;
 const LANE_CLIENT = "Lane Ellison";
 const MANUAL_CLIENT = "Angela Cummings";
+const LEGACY_BUFFER_EXCEPTION_ROWS = new Set([20, 39, 40]);
 
 const SOURCE_COLUMNS = ["date", "time", "client_name", "email", "mobile", "service"];
 const SOURCE_ROWS = [
@@ -111,6 +112,10 @@ function productionOnly() {
 
 function suffix(id) {
   return typeof id === "string" && id ? `...${id.slice(-6)}` : null;
+}
+
+function isLegacyBufferException(row) {
+  return LEGACY_BUFFER_EXCEPTION_ROWS.has(row.row);
 }
 
 function fullName(customer) {
@@ -271,11 +276,14 @@ async function processRow(client, row, config) {
   const bookings = await listDayBookings(client, config, row);
   const resolvedCustomer = resolveResult.customer ? { id: resolveResult.customer.id } : null;
   const existing = classifyExistingBooking(row, config, resolvedCustomer, bookings);
-  if (existing.classification === "EXACT_BOOKING_ALREADY_EXISTS") {
-    return { row: row.row, client: row.client_name, migrationStatus: "ALREADY_EXISTED", customerClassification: resolveResult.classification, customerCreated: false, bookingSuffix: suffix(existing.booking?.id), wrote: false };
+  const effective = isLegacyBufferException(row) && existing.classification === "TIME_CONFLICT"
+    ? { classification: "NO_EXISTING_BOOKING", booking: null }
+    : existing;
+  if (effective.classification === "EXACT_BOOKING_ALREADY_EXISTS") {
+    return { row: row.row, client: row.client_name, migrationStatus: "ALREADY_EXISTED", customerClassification: resolveResult.classification, customerCreated: false, bookingSuffix: suffix(effective.booking?.id), wrote: false };
   }
-  if (existing.classification !== "NO_EXISTING_BOOKING") {
-    return { row: row.row, client: row.client_name, migrationStatus: "BLOCKED_CONFLICT", customerClassification: resolveResult.classification, bookingClassification: existing.classification, customerCreated: false, wrote: false };
+  if (effective.classification !== "NO_EXISTING_BOOKING") {
+    return { row: row.row, client: row.client_name, migrationStatus: "BLOCKED_CONFLICT", customerClassification: resolveResult.classification, bookingClassification: effective.classification, customerCreated: false, wrote: false };
   }
 
   let customer = resolveResult.customer;
@@ -367,14 +375,17 @@ async function runMigration(body) {
       const bookings = await listDayBookings(client, config, row);
       const resolvedCustomer = resolveResult.customer ? { id: resolveResult.customer.id } : null;
       const existing = classifyExistingBooking(row, config, resolvedCustomer, bookings);
+      const effectiveClassification = isLegacyBufferException(row) && existing.classification === "TIME_CONFLICT"
+        ? "NO_EXISTING_BOOKING"
+        : existing.classification;
       const status = resolveResult.classification === "AMBIGUOUS_CUSTOMER" || resolveResult.classification === "DATA_CONFLICT"
         ? "BLOCKED_CONFLICT"
-        : existing.classification === "EXACT_BOOKING_ALREADY_EXISTS"
+        : effectiveClassification === "EXACT_BOOKING_ALREADY_EXISTS"
           ? "ALREADY_EXISTED"
-          : existing.classification === "NO_EXISTING_BOOKING"
+          : effectiveClassification === "NO_EXISTING_BOOKING"
             ? "PENDING"
             : "BLOCKED_CONFLICT";
-      results.push({ row: row.row, client: row.client_name, migrationStatus: status, customerClassification: resolveResult.classification, bookingClassification: existing.classification, wrote: false });
+      results.push({ row: row.row, client: row.client_name, migrationStatus: status, customerClassification: resolveResult.classification, bookingClassification: effectiveClassification, wrote: false });
       continue;
     }
     const result = await processRow(client, row, config);
@@ -426,5 +437,6 @@ export const massagebookMigrationExecutionForTests = {
   verifyAll,
   countExactMatches,
   namesMatch,
+  isLegacyBufferException,
   ROWS,
 };

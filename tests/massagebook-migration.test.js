@@ -276,3 +276,11 @@ test("customer name matching is exact on normalized full name", () => {
   assert.equal(namesMatch({ givenName: "Lane", familyName: "Ellison" }, { client_name: "Lane Ellison" }), true);
   assert.equal(namesMatch({ givenName: "Leila", familyName: "Noll" }, { client_name: "Joshua Castle" }), false);
 });
+
+test("legacy buffer exception rows bypass the modern turnover gate", () => {
+  const isLegacy = massagebookMigrationExecutionForTests.isLegacyBufferException;
+  assert.equal(isLegacy({ row: 39 }), true);
+  assert.equal(isLegacy({ row: 40 }), true);
+  assert.equal(isLegacy({ row: 20 }), true);
+  assert.equal(isLegacy({ row: 41 }), false);
+});
