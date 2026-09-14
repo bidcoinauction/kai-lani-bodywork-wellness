@@ -184,8 +184,8 @@ async function resolveCustomer(client, row) {
     searchEmail(client, email),
     searchPhone(client, squarePhone),
   ]);
-  const emailCustomer = emailMatches[0] || null;
-  const phoneCustomer = phoneMatches[0] || null;
+  const emailCustomer = emailMatches.find((customer) => namesMatch(customer, row)) || emailMatches[0] || null;
+  const phoneCustomer = phoneMatches.find((customer) => namesMatch(customer, row)) || phoneMatches[0] || null;
   if (emailCustomer && phoneCustomer) {
     if (emailCustomer.id === phoneCustomer.id) return { classification: "EXACT_EXISTING_CUSTOMER", customer: emailCustomer, created: false };
     return { classification: "DATA_CONFLICT", customer: null, created: false };

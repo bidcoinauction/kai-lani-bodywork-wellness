@@ -260,6 +260,20 @@ function mockCustomerClient(resultsByType) {
   };
 }
 
+test("shared-email resolution prefers the name-matching customer", async () => {
+  const row = { client_name: "Leila Noll", mobile: "(850) 661-9953", email: "leilanoll21@gmail.com" };
+  const client = mockCustomerClient({
+    email: [
+      { id: "CUST_JOSHUA", givenName: "Joshua", familyName: "Castle" },
+      { id: "CUST_LEILA", givenName: "Leila", familyName: "Noll" },
+    ],
+    phone: [{ id: "CUST_LEILA", givenName: "Leila", familyName: "Noll" }],
+  });
+  const resolved = await massagebookMigrationExecutionForTests.resolveCustomer(client, row);
+  assert.equal(resolved.classification, "EXACT_EXISTING_CUSTOMER");
+  assert.equal(resolved.customer.id, "CUST_LEILA");
+});
+
 test("Joshua Castle resolves by phone, never by shared email", async () => {
   const row = { client_name: "Joshua Castle", mobile: "(850) 496-3737", email: "leilanoll21@gmail.com" };
   const client = mockCustomerClient({ phone: [{ id: "CUST_JOSHUA", givenName: "Joshua", familyName: "Castle" }] });
