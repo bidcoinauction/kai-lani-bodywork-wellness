@@ -5,6 +5,7 @@ import { formatSquarePhoneE164, hasTurnoverConflict, listSquareBlockingBookings 
 import { addDays, addMinutes, startOfDayInTimeZone } from "../../lib/time.js";
 
 const TOKEN_ENV = "ANGELA_MIGRATION_EXECUTE_TOKEN";
+// Temporary Angela-only migration surface; remove immediately after reconciliation.
 const TARGET = Object.freeze({
   row: 19,
   client: "Angela Cummings",
