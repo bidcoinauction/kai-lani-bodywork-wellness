@@ -21,6 +21,7 @@ function bearerToken(req) {
 }
 
 function productionOnly() {
+  // Keep the temporary audit surface invisible on local and preview deployments.
   return process.env.VERCEL_ENV === "production" && process.env.SQUARE_ENVIRONMENT === "production";
 }
 
