@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatSquarePhoneE164 } from "../lib/booking-requests.js";
+import { formatSquarePhoneE164, hasTurnoverConflict } from "../lib/booking-requests.js";
 
 test("formatSquarePhoneE164 converts a 10-digit NANP number to E.164", () => {
   assert.equal(formatSquarePhoneE164("2025550147"), "+12025550147");
@@ -37,4 +37,13 @@ test("formatSquarePhoneE164 never returns the raw digits without the leading plu
   const out = formatSquarePhoneE164("2025550147");
   assert.equal(out.startsWith("+"), true);
   assert.equal(out, "+12025550147");
+});
+
+test("turnover checks sum all Square appointment segment durations", () => {
+  const existing = [{
+    startAt: "2026-09-23T14:00:00.000Z",
+    appointmentSegments: [{ durationMinutes: 90 }, { durationMinutes: 15 }],
+  }];
+  assert.equal(hasTurnoverConflict({ startAt: "2026-09-23T15:45:00.000Z", durationMinutes: 60, existing }), true);
+  assert.equal(hasTurnoverConflict({ startAt: "2026-09-23T16:15:00.000Z", durationMinutes: 60, existing }), false);
 });
