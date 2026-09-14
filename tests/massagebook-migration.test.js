@@ -17,6 +17,7 @@ import {
   startAtFromDateTime,
   validateAppointments,
 } from "../lib/massagebook-migration.js";
+import { laneAuditEndpointForTests } from "../api/internal/lane-ellison-migration-audit.js";
 import { clearSquareEnv, installFullConfig } from "./helpers.js";
 
 const ACTUAL_WORKBOOK = resolve("kai-lani-massagebook-to-square-migration-final.xlsx");
@@ -234,4 +235,22 @@ test("execute remains blocked during the audit implementation", () => {
   const { firstName, lastName } = splitClientName("Joshua Castle");
   assert.equal(firstName, "Joshua");
   assert.equal(lastName, "Castle");
+});
+
+test("Lane-only audit helper requires a unique name plus contact-supported candidate", () => {
+  assert.equal(laneAuditEndpointForTests.safeEqualToken("token", "token"), true);
+  assert.equal(laneAuditEndpointForTests.safeEqualToken("token", "other"), false);
+
+  const exact = laneAuditEndpointForTests.classifyCandidates([
+    { nameMatch: true, normalizedEmailMatch: true, normalizedPhoneMatch: true, customerSuffix: "...EXACT" },
+    { nameMatch: false, normalizedEmailMatch: true, normalizedPhoneMatch: false, customerSuffix: "...EMAIL" },
+  ]);
+  assert.equal(exact.classification, "EXACT_EXISTING_CUSTOMER");
+  assert.equal(exact.candidate.customerSuffix, "...EXACT");
+
+  const ambiguous = laneAuditEndpointForTests.classifyCandidates([
+    { nameMatch: false, normalizedEmailMatch: true, normalizedPhoneMatch: false, customerSuffix: "...EMAIL" },
+    { nameMatch: false, normalizedEmailMatch: false, normalizedPhoneMatch: true, customerSuffix: "...PHONE" },
+  ]);
+  assert.equal(ambiguous.classification, "AMBIGUOUS_CUSTOMER");
 });
