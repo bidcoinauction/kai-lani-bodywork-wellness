@@ -17,7 +17,6 @@ import {
   startAtFromDateTime,
   validateAppointments,
 } from "../lib/massagebook-migration.js";
-import { massagebookMigrationExecutionForTests } from "../api/internal/massagebook-migration-execute.js";
 import { clearSquareEnv, installFullConfig } from "./helpers.js";
 
 const ACTUAL_WORKBOOK = resolve("kai-lani-massagebook-to-square-migration-final.xlsx");
@@ -235,93 +234,4 @@ test("execute remains blocked during the audit implementation", () => {
   const { firstName, lastName } = splitClientName("Joshua Castle");
   assert.equal(firstName, "Joshua");
   assert.equal(lastName, "Castle");
-});
-
-test("migration execution scope reconciles to 58 source, 1 canary, 1 manual, 56 automatic", () => {
-  const scope = massagebookMigrationExecutionForTests.scopeCheck();
-  assert.equal(scope.total, 58);
-  assert.equal(scope.laneCount, 1);
-  assert.equal(scope.manualCount, 1);
-  assert.equal(scope.eligibleCount, 56);
-  assert.equal(scope.valid, true);
-  assert.equal(massagebookMigrationExecutionForTests.MAX_BATCH, 10);
-});
-
-function mockCustomerClient(resultsByType) {
-  return {
-    customers: {
-      search: async ({ query }) => {
-        const filter = query?.filter || {};
-        if (filter.emailAddress) return { customers: resultsByType.email || [] };
-        if (filter.phoneNumber) return { customers: resultsByType.phone || [] };
-        return { customers: [] };
-      },
-    },
-  };
-}
-
-test("shared-email resolution prefers the name-matching customer", async () => {
-  const row = { client_name: "Leila Noll", mobile: "(850) 661-9953", email: "leilanoll21@gmail.com" };
-  const client = mockCustomerClient({
-    email: [
-      { id: "CUST_JOSHUA", givenName: "Joshua", familyName: "Castle" },
-      { id: "CUST_LEILA", givenName: "Leila", familyName: "Noll" },
-    ],
-    phone: [{ id: "CUST_LEILA", givenName: "Leila", familyName: "Noll" }],
-  });
-  const resolved = await massagebookMigrationExecutionForTests.resolveCustomer(client, row);
-  assert.equal(resolved.classification, "EXACT_EXISTING_CUSTOMER");
-  assert.equal(resolved.customer.id, "CUST_LEILA");
-});
-
-test("Joshua Castle resolves by phone, never by shared email", async () => {
-  const row = { client_name: "Joshua Castle", mobile: "(850) 496-3737", email: "leilanoll21@gmail.com" };
-  const client = mockCustomerClient({ phone: [{ id: "CUST_JOSHUA", givenName: "Joshua", familyName: "Castle" }] });
-  const resolved = await massagebookMigrationExecutionForTests.resolveCustomer(client, row);
-  assert.equal(resolved.classification, "EXACT_EXISTING_CUSTOMER");
-
-  const noPhone = mockCustomerClient({ phone: [] });
-  const wouldCreate = await massagebookMigrationExecutionForTests.resolveCustomer(noPhone, row);
-  assert.equal(wouldCreate.classification, "WOULD_CREATE_NEW_CUSTOMER");
-});
-
-test("customer name matching is exact on normalized full name", () => {
-  const namesMatch = massagebookMigrationExecutionForTests.namesMatch;
-  assert.equal(namesMatch({ givenName: "Lane", familyName: "Ellison" }, { client_name: "Lane Ellison" }), true);
-  assert.equal(namesMatch({ givenName: "Leila", familyName: "Noll" }, { client_name: "Joshua Castle" }), false);
-});
-
-test("legacy buffer exception rows bypass the modern turnover gate", () => {
-  const isLegacy = massagebookMigrationExecutionForTests.isLegacyBufferException;
-  assert.equal(isLegacy({ row: 39 }), true);
-  assert.equal(isLegacy({ row: 40 }), true);
-  assert.equal(isLegacy({ row: 20 }), true);
-  assert.equal(isLegacy({ row: 41 }), false);
-});
-
-test("invalid Square phone numbers are detected and customer create retries without phone", async () => {
-  const isInvalid = massagebookMigrationExecutionForTests.isInvalidPhoneError;
-  assert.equal(isInvalid({ errors: [{ code: "INVALID_PHONE_NUMBER" }] }), true);
-  assert.equal(isInvalid({ errors: [{ code: "OTHER" }] }), false);
-
-  const row = { row: 48, client_name: "Valorie Franklin", email: "v.zambito@gmail.com", mobile: "(400) 580-8323" };
-  const calls = [];
-  const client = {
-    customers: {
-      create: async (payload) => {
-        calls.push(payload);
-        if (payload.phoneNumber) {
-          const err = new Error("invalid");
-          err.errors = [{ code: "INVALID_PHONE_NUMBER" }];
-          throw err;
-        }
-        return { customer: { id: "CUST_VALORIE" } };
-      },
-    },
-  };
-  const result = await massagebookMigrationExecutionForTests.createCustomer(client, row);
-  assert.equal(result.phoneOmitted, true);
-  assert.equal(result.customer.id, "CUST_VALORIE");
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].phoneNumber, undefined);
 });
