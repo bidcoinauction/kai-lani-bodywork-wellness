@@ -17,6 +17,7 @@ import {
   startAtFromDateTime,
   validateAppointments,
 } from "../lib/massagebook-migration.js";
+import { massagebookMigrationExecutionForTests } from "../api/internal/massagebook-migration-execute.js";
 import { clearSquareEnv, installFullConfig } from "./helpers.js";
 
 const ACTUAL_WORKBOOK = resolve("kai-lani-massagebook-to-square-migration-final.xlsx");
@@ -234,4 +235,44 @@ test("execute remains blocked during the audit implementation", () => {
   const { firstName, lastName } = splitClientName("Joshua Castle");
   assert.equal(firstName, "Joshua");
   assert.equal(lastName, "Castle");
+});
+
+test("migration execution scope reconciles to 58 source, 1 canary, 1 manual, 56 automatic", () => {
+  const scope = massagebookMigrationExecutionForTests.scopeCheck();
+  assert.equal(scope.total, 58);
+  assert.equal(scope.laneCount, 1);
+  assert.equal(scope.manualCount, 1);
+  assert.equal(scope.eligibleCount, 56);
+  assert.equal(scope.valid, true);
+  assert.equal(massagebookMigrationExecutionForTests.MAX_BATCH, 10);
+});
+
+function mockCustomerClient(resultsByType) {
+  return {
+    customers: {
+      search: async ({ query }) => {
+        const filter = query?.filter || {};
+        if (filter.emailAddress) return { customers: resultsByType.email || [] };
+        if (filter.phoneNumber) return { customers: resultsByType.phone || [] };
+        return { customers: [] };
+      },
+    },
+  };
+}
+
+test("Joshua Castle resolves by phone, never by shared email", async () => {
+  const row = { client_name: "Joshua Castle", mobile: "(850) 496-3737", email: "leilanoll21@gmail.com" };
+  const client = mockCustomerClient({ phone: [{ id: "CUST_JOSHUA", givenName: "Joshua", familyName: "Castle" }] });
+  const resolved = await massagebookMigrationExecutionForTests.resolveCustomer(client, row);
+  assert.equal(resolved.classification, "EXACT_EXISTING_CUSTOMER");
+
+  const noPhone = mockCustomerClient({ phone: [] });
+  const wouldCreate = await massagebookMigrationExecutionForTests.resolveCustomer(noPhone, row);
+  assert.equal(wouldCreate.classification, "WOULD_CREATE_NEW_CUSTOMER");
+});
+
+test("customer name matching is exact on normalized full name", () => {
+  const namesMatch = massagebookMigrationExecutionForTests.namesMatch;
+  assert.equal(namesMatch({ givenName: "Lane", familyName: "Ellison" }, { client_name: "Lane Ellison" }), true);
+  assert.equal(namesMatch({ givenName: "Leila", familyName: "Noll" }, { client_name: "Joshua Castle" }), false);
 });
