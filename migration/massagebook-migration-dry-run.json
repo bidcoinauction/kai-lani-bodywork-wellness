@@ -66,10 +66,20 @@
       "customerAction": "EXACT_EXISTING_CUSTOMER",
       "existingBookingStatus": "NO_EXISTING_BOOKING",
       "resolvedSquareBookingSuffix": null,
-      "proposedBookingAction": "WOULD_CREATE_BOOKING",
+      "proposedBookingAction": "MIGRATED",
       "conflict": null,
       "ready_to_migrate": true,
-      "reason": "ready"
+      "reason": "ready",
+      "migrationStatus": "MIGRATED",
+      "migratedAt": "2026-09-14T15:28:54.245Z",
+      "migratedSquareBookingSuffix": "...dyrx7x",
+      "verificationStatus": "VERIFIED_ACCEPTED",
+      "availabilityReconciliation": {
+        "liveWebsiteEndpointStatus": "OUTSIDE_PUBLIC_BOOKING_WINDOW",
+        "serverAvailabilityTargetBlocked": true,
+        "turnoverBehaviorCorrect": true,
+        "matchingBookingCount": 1
+      }
     },
     {
       "row": 2,
