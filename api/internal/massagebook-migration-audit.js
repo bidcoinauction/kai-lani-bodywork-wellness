@@ -22,6 +22,7 @@ function bearerToken(req) {
 
 function productionOnly() {
   // Keep the temporary audit surface invisible on local and preview deployments.
+  // The bearer token gate is checked only after this production guard passes.
   return process.env.VERCEL_ENV === "production" && process.env.SQUARE_ENVIRONMENT === "production";
 }
 
