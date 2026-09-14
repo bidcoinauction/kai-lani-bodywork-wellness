@@ -24,6 +24,10 @@ const prepaymentSql = readFileSync(
   resolve(here, "../db/migrations/005_optional_prepayment.sql"),
   "utf8",
 );
+const addOnsSql = readFileSync(
+  resolve(here, "../db/migrations/006_booking_request_add_ons.sql"),
+  "utf8",
+);
 
 const STATUSES = [
   "pending",
@@ -176,6 +180,12 @@ test("migration 005 additively stores optional prepayment references only", () =
     .filter((line) => !line.trimStart().startsWith("--"))
     .join("\n");
   assert.doesNotMatch(sqlWithoutComments, /card|cvv|expiration|raw_payload|payload json|DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/i);
+});
+
+test("migration 006 additively stores booking add-on keys and stays additive", () => {
+  assert.match(addOnsSql, /ADD COLUMN IF NOT EXISTS add_on_keys jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(addOnsSql, /jsonb_typeof\(add_on_keys\) = 'array'/);
+  assert.doesNotMatch(addOnsSql, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE|raw_payload|card|cvv/i);
 });
 
 // ---------------------------------------------------------------------------
