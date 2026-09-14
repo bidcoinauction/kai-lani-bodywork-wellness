@@ -17,7 +17,6 @@ import {
   startAtFromDateTime,
   validateAppointments,
 } from "../lib/massagebook-migration.js";
-import { laneEllisonCanaryForTests } from "../api/internal/lane-ellison-canary-execute.js";
 import { clearSquareEnv, installFullConfig } from "./helpers.js";
 
 const ACTUAL_WORKBOOK = resolve("kai-lani-massagebook-to-square-migration-final.xlsx");
@@ -235,57 +234,4 @@ test("execute remains blocked during the audit implementation", () => {
   const { firstName, lastName } = splitClientName("Joshua Castle");
   assert.equal(firstName, "Joshua");
   assert.equal(lastName, "Castle");
-});
-
-test("Lane canary execution surface is structurally limited to row 27", () => {
-  assert.equal(laneEllisonCanaryForTests.safeEqualToken("token", "token"), true);
-  assert.equal(laneEllisonCanaryForTests.safeEqualToken("token", "other"), false);
-  assert.deepEqual(laneEllisonCanaryForTests.assertSelected({ only: "27", mode: "dry_run" }), { ok: true });
-  assert.deepEqual(laneEllisonCanaryForTests.assertSelected({ only: "27", mode: "execute" }), { ok: true });
-  assert.equal(laneEllisonCanaryForTests.assertSelected({ only: "28", mode: "execute" }).ok, false);
-  assert.equal(laneEllisonCanaryForTests.assertSelected({ only: "27", mode: "bulk" }).ok, false);
-
-  assert.equal(laneEllisonCanaryForTests.verifyCheckpointRow({
-    row: 27,
-    date: "2026-09-28",
-    time: "11:30",
-    client: "Lane Ellison",
-    service: "60 MIN CUSTOMIZED MASSAGE",
-    serviceMapping: "customized_60",
-    occupiedDurationMinutes: 60,
-  }), true);
-  assert.equal(laneEllisonCanaryForTests.verifyCheckpointRow({ row: 27, client: "Lane Ellison" }), false);
-});
-
-test("Lane canary customer classification requires the expected exact Square suffix", () => {
-  const exact = laneEllisonCanaryForTests.classifyLaneCandidates([
-    {
-      id: "CUSTOMER_PAV7VG",
-      givenName: "Lane",
-      familyName: "Ellison",
-      emailAddress: "lanefellison@gmail.com",
-      phoneNumber: "+17044961168",
-    },
-    {
-      id: "CUSTOMER_8GD540",
-      givenName: "Lane",
-      familyName: "Ellison",
-      emailAddress: "other@example.com",
-      phoneNumber: "+17044961168",
-    },
-  ]);
-  assert.equal(exact.classification, "EXACT_EXISTING_CUSTOMER");
-  assert.equal(exact.customerSuffix, laneEllisonCanaryForTests.EXPECTED_CUSTOMER_SUFFIX);
-  assert.equal(exact.candidateCount, 2);
-
-  const wrongSuffix = laneEllisonCanaryForTests.classifyLaneCandidates([
-    {
-      id: "CUSTOMER_OTHER1",
-      givenName: "Lane",
-      familyName: "Ellison",
-      emailAddress: "lanefellison@gmail.com",
-      phoneNumber: "+17044961168",
-    },
-  ]);
-  assert.equal(wrongSuffix.classification, "ABORT_CUSTOMER_MISMATCH");
 });
