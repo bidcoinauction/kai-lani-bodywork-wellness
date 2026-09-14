@@ -129,3 +129,15 @@ test("mobile booking action keeps disabled wording and complete summary", () => 
   assert.doesNotMatch(bookingStyles, /\.sqb-mobile-action \{[^}]*position: sticky;/s);
   assert.doesNotMatch(bookingStyles, /\.sqb-mobile-summary-main \{[^}]*text-overflow: ellipsis;/s);
 });
+
+test("booking date UI has no weekday-only or Saturday exclusion", () => {
+  const bookingSource = fs.readFileSync(
+    path.join(SRC_ROOT, "components", "calendar", "SquareBooking.jsx"),
+    "utf8",
+  );
+
+  assert.match(bookingSource, /const BOOKING_WINDOW_DAYS = 14;/);
+  assert.match(bookingSource, /for \(let i = 0; i < BOOKING_WINDOW_DAYS; i \+= 1\)/);
+  assert.doesNotMatch(bookingSource, /getDay\(\)\s*[!=]==?\s*6|getUTCDay\(\)\s*[!=]==?\s*6|Saturday|weekdayOnly|weekdaysOnly|Mon.?Fri/i);
+  assert.match(bookingSource, /\/api\/square\/availability\?serviceKey=/);
+});

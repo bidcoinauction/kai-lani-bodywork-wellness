@@ -33,6 +33,15 @@ function dateInDays(days) {
   return getNewYorkDateString(addDays(base, days));
 }
 
+function nextSaturdayWithinWindow() {
+  const base = startOfDayInTimeZone(getNewYorkDateString());
+  for (let days = 0; days <= 13; days += 1) {
+    const date = getNewYorkDateString(addDays(base, days));
+    if (new Date(`${date}T12:00:00.000Z`).getUTCDay() === 6) return date;
+  }
+  throw new Error("no_saturday_in_window");
+}
+
 async function run(query) {
   const res = makeResponse();
   await availabilityHandler(makeRequest({ method: "GET", query }), res);
@@ -167,6 +176,100 @@ test("returns an empty slots array when there is no availability", async () => {
   const res = await withSquareMock({}, () =>
     run({ serviceKey: "customized_60", date: dateInDays(1) }),
   );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.slots, []);
+});
+
+test("Saturday is a valid booking day when Square returns availability", async () => {
+  installFullConfig();
+  const date = nextSaturdayWithinWindow();
+  const saturdaySlot = `${date}T14:00:00.000Z`;
+  const res = await withSquareMock(
+    {
+      searchAvailability: async () => ({ availabilities: [{ startAt: saturdaySlot }] }),
+    },
+    () => run({ serviceKey: "customized_60", date }),
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.slots.map((slot) => slot.startAt), [saturdaySlot]);
+});
+
+test("Saturday Square bookings block occupied, overlap, and turnover slots while valid openings remain", async () => {
+  installFullConfig();
+  const date = nextSaturdayWithinWindow();
+  const existingStart = `${date}T14:00:00.000Z`;
+  const occupied = `${date}T14:00:00.000Z`;
+  const overlap = `${date}T14:30:00.000Z`;
+  const turnover = `${date}T15:29:00.000Z`;
+  const valid = `${date}T15:30:00.000Z`;
+  const res = await withSquareMock(
+    {
+      searchAvailability: async () => ({
+        availabilities: [occupied, overlap, turnover, valid].map((startAt) => ({ startAt })),
+      }),
+      listBookings: async () => ({
+        data: [{
+          id: "BK_SATURDAY",
+          status: "ACCEPTED",
+          startAt: existingStart,
+          appointmentSegments: [{ teamMemberId: "TM_CHELSEA", durationMinutes: 60 }],
+        }],
+      }),
+    },
+    () => run({ serviceKey: "customized_60", date }),
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.slots.map((slot) => slot.startAt), [valid]);
+});
+
+test("Saturday 90-minute availability uses 90-minute service duration for turnover filtering", async () => {
+  installFullConfig();
+  const date = nextSaturdayWithinWindow();
+  const existingStart = `${date}T14:00:00.000Z`;
+  const blocked = `${date}T15:30:00.000Z`;
+  const valid = `${date}T16:00:00.000Z`;
+  const res = await withSquareMock(
+    {
+      searchAvailability: async () => ({
+        availabilities: [{ startAt: blocked }, { startAt: valid }],
+      }),
+      listBookings: async () => ({
+        data: [{
+          id: "BK_SATURDAY_90",
+          status: "ACCEPTED",
+          startAt: existingStart,
+          appointmentSegments: [{ teamMemberId: "TM_CHELSEA", durationMinutes: 90 }],
+        }],
+      }),
+    },
+    () => run({ serviceKey: "customized_90", date }),
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.slots.map((slot) => slot.startAt), [valid]);
+});
+
+test("Square confirmed appointments block site availability even without local records", async () => {
+  installFullConfig();
+  const date = dateInDays(1);
+  const slot = `${date}T14:00:00.000Z`;
+  const res = await withSquareMock(
+    {
+      searchAvailability: async () => ({ availabilities: [{ startAt: slot }] }),
+      listBookings: async () => ({
+        data: [{
+          id: "BK_SQUARE_TRUTH",
+          status: "ACCEPTED",
+          startAt: slot,
+          appointmentSegments: [{ teamMemberId: "TM_CHELSEA", durationMinutes: 60 }],
+        }],
+      }),
+    },
+    () => run({ serviceKey: "customized_60", date }),
+  );
+
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.slots, []);
 });
