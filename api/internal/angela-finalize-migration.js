@@ -119,8 +119,8 @@ async function getPrimary(client) {
 }
 
 async function searchCatalog(client) {
-  const response = await client.catalog.search({ objectTypes: ["ITEM"], includeRelatedObjects: true, limit: 100 });
-  const objects = [...(response?.data?.objects || []), ...(response?.data?.relatedObjects || [])];
+  const response = await client.catalog.searchItems({ productTypes: ["APPOINTMENTS_SERVICE"] });
+  const objects = response?.items || [];
   const variations = [];
   for (const object of objects) {
     if (object.type !== "ITEM") continue;
