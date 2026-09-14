@@ -349,6 +349,7 @@ async function executeCanary(body) {
 
 function safeResponse(result) {
   return {
+    executionSurface: "lane_ellison_row_27_canary_only",
     selectedRows: result.selectedRows,
     mode: result.mode,
     row: {
